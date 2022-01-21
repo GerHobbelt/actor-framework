@@ -91,7 +91,7 @@ struct message_verifier<spawn_mode::function_with_selfptr,
   }
 };
 
-template <class F>
+template <class F, spawn_options Os>
 actor_factory make_actor_factory(F fun) {
   return [fun](actor_config& cfg, message& msg) -> actor_factory_result {
     using trait = infer_handle_from_fun<F>;
@@ -113,41 +113,41 @@ actor_factory make_actor_factory(F fun) {
         return result;
       },
     };
-    handle hdl = cfg.host->system().spawn_class<impl, no_spawn_options>(cfg);
+    handle hdl = cfg.host->system().spawn_class<impl, Os>(cfg);
     return {actor_cast<strong_actor_ptr>(std::move(hdl)),
             cfg.host->system().message_types<handle>()};
   };
 }
 
-template <class Handle, class T, class... Ts>
+template <class Handle, class T, spawn_options Os, class... Ts>
 struct dyn_spawn_class_helper {
   Handle& result;
   actor_config& cfg;
   void operator()(Ts... xs) {
     CAF_ASSERT(cfg.host);
-    result = cfg.host->system().spawn_class<T, no_spawn_options>(cfg, xs...);
+    result = cfg.host->system().spawn_class<T, Os>(cfg, xs...);
   }
 };
 
-template <class T, class... Ts>
+template <class T, spawn_options Os, class... Ts>
 actor_factory_result dyn_spawn_class(actor_config& cfg, message& msg) {
   CAF_ASSERT(cfg.host);
   using handle = typename infer_handle_from_class<T>::type;
   handle hdl;
-  message_handler factory{dyn_spawn_class_helper<handle, T, Ts...>{hdl, cfg}};
+  message_handler factory{dyn_spawn_class_helper<handle, T, Os, Ts...>{hdl, cfg}};
   factory(msg);
   return {actor_cast<strong_actor_ptr>(std::move(hdl)),
           cfg.host->system().message_types<handle>()};
 }
 
-template <class T, class... Ts>
+template <class T, spawn_options Os, class... Ts>
 actor_factory make_actor_factory() {
   static_assert(
     detail::conjunction<std::is_lvalue_reference<Ts>::value...>::value,
     "all Ts must be lvalue references");
   static_assert(std::is_base_of<local_actor, T>::value,
                 "T is not derived from local_actor");
-  return &dyn_spawn_class<T, Ts...>;
+  return &dyn_spawn_class<T, Os, Ts...>;
 }
 
 } // namespace caf
