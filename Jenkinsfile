@@ -115,9 +115,9 @@ config = [
             extraBuildFlags: [
                 'CAF_ENABLE_CURL_EXAMPLES:BOOL=ON',
                 'CAF_ENABLE_PROTOBUF_EXAMPLES:BOOL=ON',
-                'CAF_ENABLE_QT5_EXAMPLES:BOOL=ON',
+                'CAF_ENABLE_QT6_EXAMPLES:BOOL=ON',
                 'OPENSSL_ROOT_DIR:PATH=/usr/local/opt/openssl',
-                'Qt5_DIR:PATH=/usr/local/opt/qt/lib/cmake/Qt5',
+                'Qt6_DIR:PATH=/usr/local/opt/qt/lib/cmake/Qt6',
             ],
             extraDebugBuildFlags: [
                 'CAF_SANITIZERS:STRING=address',
@@ -165,26 +165,6 @@ pipeline {
             agent { label 'clang-format' }
             steps {
                 runClangFormat(config)
-            }
-        }
-        stage('Check Consistency') {
-            agent { label 'unix' }
-            steps {
-                deleteDir()
-                unstash('sources')
-                dir('sources') {
-                    cmakeBuild([
-                        buildDir: 'build',
-                        installation: 'cmake in search path',
-                        sourceDir: '.',
-                        cmakeArgs: '-DCAF_ENABLE_IO_MODULE:BOOL=OFF ' +
-                                   '-DCAF_ENABLE_UTILITY_TARGETS:BOOL=ON',
-                        steps: [[
-                            args: '--target consistency-check',
-                            withCmake: true,
-                        ]],
-                    ])
-                }
             }
         }
         stage('Build') {
