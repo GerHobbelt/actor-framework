@@ -105,7 +105,7 @@ std::string get_root_uuid() {
     return cols.size() == 6 && cols[1] == "/";
   });
   if (i != end) {
-    uuid = move((*i)[0]);
+    uuid = std::move((*i)[0]);
     const char cstr[] = {"UUID="};
     auto slen = sizeof(cstr) - 1;
     if (uuid.compare(0, slen, cstr) == 0) {

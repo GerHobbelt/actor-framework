@@ -69,7 +69,7 @@ int caf_main(actor_system& sys, const config& cfg) {
   helper.setupUi(&mw);
   helper.chatwidget->init(sys);
   auto client = helper.chatwidget->as_actor();
-  anon_send(client, set_name_atom_v, move(name));
+  anon_send(client, set_name_atom_v, std::move(name));
   anon_send(client, join_atom_v, std::move(grp));
   mw.show();
   return app.exec();
