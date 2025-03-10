@@ -208,6 +208,7 @@ caf_add_component(
     caf/detail/set_thread_name.cpp
     caf/detail/stream_bridge.cpp
     caf/detail/stringification_inspector.cpp
+    caf/detail/stringification_inspector.test.cpp
     caf/detail/sync_request_bouncer.cpp
     caf/detail/sync_ring_buffer.test.cpp
     caf/detail/test_coordinator.cpp
@@ -252,6 +253,7 @@ caf_add_component(
     caf/flow/op/prefix_and_tail.test.cpp
     caf/flow/op/publish.test.cpp
     caf/flow/op/pullable.cpp
+    caf/flow/op/retry.test.cpp
     caf/flow/op/sample.test.cpp
     caf/flow/op/ucast.test.cpp
     caf/flow/op/zip_with.test.cpp

@@ -5,9 +5,19 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 
 ## Unreleased
 
+### Added
+
+- New flow operator: `retry`.
+
 ### Fixed
 
 - Fix build error in `caf-net` when building with C++23 (#1919).
+- Restructure some implementation details of `intrsuive_ptr` (no functional
+  changes) to make it easier for `clang-tidy` to analyze the code. This fixes a
+  false positive reported by `clang-tidy` in some use cases where `clang-tidy`
+  would falsely report a use-after-free bug.
+- Closing a WebSocket connection now properly sends a close frame to the client
+  before closing the TCP connection (#1938).
 
 ## [1.0.2] - 2024-10-30
 
