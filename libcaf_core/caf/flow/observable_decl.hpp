@@ -225,6 +225,9 @@ public:
   /// Combines the output of multiple @ref observable objects into one by
   /// merging their outputs. May also be called without arguments if the `T` is
   /// an @ref observable.
+  /// @param xs The observables to merge with this observable. The first
+  ///           parameter may also be the maximum number of concurrent
+  ///           observables to merge (as unsigned integer).
   template <class Out = output_type, class... Inputs>
   auto merge(Inputs&&... xs);
 
@@ -234,8 +237,24 @@ public:
   template <class Out = output_type, class... Inputs>
   auto concat(Inputs&&...);
 
+  /// Combines the output of multiple @ref observable objects into one by
+  /// concatenating their outputs.
+  /// @param f The function that combines the outputs of all observables.
+  /// @param xs The observables to combine with this observable.
+  template <class F, class... Inputs>
+  auto combine_latest(F&& fn, Inputs&&... xs);
+
   /// Returns a transformation that emits items by merging the outputs of all
   /// observables returned by `f`.
+  /// @param f The function that returns an observable for each input.
+  /// @param max_concurrency The maximum number of subscriptions to keep open at
+  ///                       any given time.
+  template <class Out = output_type, class F>
+  auto flat_map(F f, size_t max_concurrency);
+
+  /// Returns a transformation that emits items by merging the outputs of all
+  /// observables returned by `f`.
+  /// @param f The function that returns an observable for each input.
   template <class Out = output_type, class F>
   auto flat_map(F f);
 
@@ -404,6 +423,13 @@ public:
 
 private:
   // -- member variables -------------------------------------------------------
+
+  template <class Out = output_type, class... Inputs>
+  auto merge_with_concurrency(size_t max_concurrent, Inputs&&... xs);
+
+  template <class F, size_t... Indexes, class... Ts>
+  auto combine_latest_impl(F&& fn, std::integer_sequence<size_t, Indexes...>,
+                           Ts&&... inputs);
 
   pimpl_type pimpl_;
 };

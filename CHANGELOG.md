@@ -9,10 +9,12 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 
 - Add intermediary types for the `mail` API as `[[nodiscard]]` to make it easier
   to spot mistakes when chaining calls.
+- The `merge` and `flat_map` operators now accept an optional unsigned integer
+  parameter to configure the maximum number of concurrent subscriptions.
 
 ### Added
 
-- New flow operator: `retry`.
+- New flow operators: `retry` and `combine_latest`.
 - New `with_userinfo` member function for URIs that allows setting the user-info
   sub-component without going through an URI builder.
 

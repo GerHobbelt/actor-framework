@@ -13,6 +13,7 @@
 #include "caf/cow_vector.hpp"
 #include "caf/defaults.hpp"
 #include "caf/detail/assert.hpp"
+#include "caf/detail/combine_latest.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/disposable.hpp"
 #include "caf/flow/coordinated.hpp"
@@ -398,10 +399,23 @@ public:
     return materialize().concat(std::forward<Inputs>(xs)...);
   }
 
+  /// @copydoc observable::combine_latest
+  template <class F, class... Inputs>
+  auto combine_latest(F&& fn, Inputs&&... xs) && {
+    static_assert(sizeof...(Inputs) > 1, "at least two inputs required");
+    return combine_latest(std::forward<F>(fn), std::forward<Inputs>(xs)...);
+  }
+
   /// @copydoc observable::start_with
   template <class Input>
   auto start_with(Input&& value) && {
     return materialize().start_with(std::forward<Input>(value));
+  }
+
+  /// @copydoc observable::flat_map
+  template <class F>
+  auto flat_map(F f, size_t max_concurrent) && {
+    return materialize().flat_map(std::move(f), max_concurrent);
   }
 
   /// @copydoc observable::flat_map
@@ -827,21 +841,89 @@ observable<T> observable<T>::retry(Predicate predicate) {
 
 template <class T>
 template <class Out, class... Inputs>
-auto observable<T>::merge(Inputs&&... xs) {
+auto observable<T>::merge_with_concurrency(size_t max_concurrent,
+                                           Inputs&&... xs) {
   if constexpr (is_observable_v<Out>) {
     static_assert(sizeof...(Inputs) == 0,
                   "merge on an observable<observable<T>> allows no arguments");
     using value_t = output_type_t<Out>;
     return parent()->add_child_hdl(std::in_place_type<op::merge<value_t>>,
-                                   *this);
+                                   max_concurrent, *this);
   } else {
     static_assert(sizeof...(Inputs) > 0, "no observable to merge with");
     static_assert((std::is_same_v<Out, output_type_t<std::decay_t<Inputs>>>
                    && ...),
                   "can only merge observables with the same observed type");
-    return parent()->add_child_hdl(std::in_place_type<op::merge<Out>>, *this,
+    return parent()->add_child_hdl(std::in_place_type<op::merge<Out>>,
+                                   max_concurrent, *this,
                                    std::forward<Inputs>(xs).as_observable()...);
   }
+}
+
+template <class T>
+template <class F, size_t... Indexes, class... Ts>
+auto observable<T>::combine_latest_impl(
+  F&& fn, std::integer_sequence<size_t, Indexes...>, Ts&&... inputs) {
+  static_assert(sizeof...(Ts) > 1, "at least two inputs required");
+  using state_t
+    = detail::combine_latest_state<std::decay_t<F>,
+                                   output_type_t<std::decay_t<Ts>>...>;
+  using intermediate_type = typename state_t::intermediate_type;
+  using mapped_type = std::optional<typename state_t::output_type>;
+  auto state = std::make_shared<state_t>(std::in_place, std::forward<F>(fn));
+  return parent()
+    ->add_child_hdl(std::in_place_type<op::merge<intermediate_type>>,
+                    sizeof...(Ts),
+                    state_t::map(std::integral_constant<size_t, Indexes>{},
+                                 std::forward<Ts>(inputs))
+                      .as_observable()...)
+    .map(
+      [state](const intermediate_type& value) { return state->on_next(value); })
+    .filter([](const mapped_type& mapped) { return mapped.has_value(); })
+    .map([](const mapped_type& mapped) { return *mapped; });
+}
+
+} // namespace caf::flow
+
+namespace caf::detail {
+
+template <class...>
+struct has_max_concurrent_arg : std::false_type {};
+
+template <class T, class... Ts>
+struct has_max_concurrent_arg<T, Ts...> {
+  static constexpr bool value = std::is_same_v<std::decay_t<T>, size_t>;
+};
+
+template <class... Ts>
+constexpr bool has_max_concurrent_arg_v = has_max_concurrent_arg<Ts...>::value;
+
+} // namespace caf::detail
+
+namespace caf::flow {
+
+template <class T>
+template <class Out, class... Inputs>
+auto observable<T>::merge(Inputs&&... xs) {
+  if constexpr (detail::has_max_concurrent_arg_v<Inputs...>) {
+    return merge_with_concurrency(std::forward<Inputs>(xs)...);
+  } else {
+    if constexpr (sizeof...(Inputs) == 0) {
+      return merge_with_concurrency(defaults::flow::max_concurrent,
+                                    std::forward<Inputs>(xs)...);
+    } else {
+      return merge_with_concurrency(sizeof...(Inputs) + 1,
+                                    std::forward<Inputs>(xs)...);
+    }
+  }
+}
+
+template <class T>
+template <class F, class... Inputs>
+auto observable<T>::combine_latest(F&& fn, Inputs&&... xs) {
+  constexpr std::make_index_sequence<sizeof...(Inputs) + 1> indexes;
+  return combine_latest_impl(std::forward<F>(fn), indexes, std::move(*this),
+                             std::forward<Inputs>(xs)...);
 }
 
 template <class T>
@@ -865,13 +947,13 @@ auto observable<T>::concat(Inputs&&... xs) {
 
 template <class T>
 template <class Out, class F>
-auto observable<T>::flat_map(F f) {
+auto observable<T>::flat_map(F f, size_t max_concurrent) {
   using res_t = decltype(f(std::declval<const Out&>()));
   if constexpr (is_observable_v<res_t>) {
     return map([fn = std::move(f)](const Out& x) mutable {
              return fn(x).as_observable();
            })
-      .merge();
+      .merge(max_concurrent);
   } else if constexpr (detail::is_optional_v<res_t>) {
     return map([fn = std::move(f)](const Out& x) mutable { return fn(x); })
       .filter([](const res_t& x) { return x.has_value(); })
@@ -887,6 +969,12 @@ auto observable<T>::flat_map(F f) {
            })
       .concat();
   }
+}
+
+template <class T>
+template <class Out, class F>
+auto observable<T>::flat_map(F f) {
+  return flat_map(std::move(f), defaults::flow::max_concurrent);
 }
 
 template <class T>
