@@ -15,7 +15,6 @@ config = [
     ],
     // Default CMake flags for the builds.
     buildFlags: [
-        'CAF_ENABLE_ACTOR_PROFILER:BOOL=ON',
         'CAF_ENABLE_EXAMPLES:BOOL=ON',
         'CAF_ENABLE_ROBOT_TESTS:BOOL=ON',
         'CAF_ENABLE_RUNTIME_CHECKS:BOOL=ON',
@@ -24,15 +23,7 @@ config = [
     // Note on no-maybe-uninitialized: some GCC versions have weird bugs that causes false positives.
     buildMatrix: [
         // Release builds.
-        ['almalinux-8', [ // EOL: June 2029
-            numCores: 4,
-            tags: ['docker'],
-            builds: ['release'],
-            extraBuildFlags: [
-                'CMAKE_CXX_FLAGS:STRING=-Werror -Wno-maybe-uninitialized',
-            ],
-        ]],
-        ['almalinux-9', [ // EOL: May 2032
+        ['almalinux-9', [ // EOL: May 2027
             numCores: 4,
             tags: ['docker'],
             builds: ['release'],
@@ -64,20 +55,20 @@ config = [
                 'CMAKE_CXX_FLAGS:STRING=-Werror -Wno-maybe-uninitialized -Wno-array-bounds -Wno-free-nonheap-object',
             ],
         ]],
-        ['fedora-39', [ // EOL November 2024
-            numCores: 4,
-            tags: ['docker'],
-            builds: ['release'],
-            extraBuildFlags: [
-                'CMAKE_CXX_FLAGS:STRING=-Werror -Wno-maybe-uninitialized -Wno-array-bounds',
-            ],
-        ]],
         ['fedora-40', [ // EOL May 2025
             numCores: 4,
             tags: ['docker'],
             builds: ['release'],
             extraBuildFlags: [
-                'CMAKE_CXX_FLAGS:STRING=-Werror -Wno-maybe-uninitialized -Wno-uninitialized -Wno-array-bounds -Wno-free-nonheap-object',
+                'CMAKE_CXX_FLAGS:STRING=-Werror -Wno-maybe-uninitialized -Wno-uninitialized -Wno-array-bounds',
+            ],
+        ]],
+        ['fedora-41', [ // EOL November 2025
+            numCores: 4,
+            tags: ['docker'],
+            builds: ['release'],
+            extraBuildFlags: [
+                'CMAKE_CXX_FLAGS:STRING=-Werror -Wno-maybe-uninitialized -Wno-uninitialized -Wno-array-bounds',
                 'CAF_CXX_VERSION:STRING=23',
                 'CAF_USE_STD_FORMAT:BOOL=ON',
             ],
@@ -107,7 +98,7 @@ config = [
             ],
         ]],
         // Debug build with exceptions disabled.
-        ['fedora-40:no-exceptions', [
+        ['fedora-41:no-exceptions', [
             numCores: 4,
             tags: ['docker'],
             builds: ['debug'],
@@ -118,7 +109,7 @@ config = [
             ],
         ]],
         // Debug build for LeakSanitizer.
-        ['fedora-40:leak-checks', [
+        ['fedora-41:leak-checks', [
             numCores: 4,
             tags: ['docker', 'LeakSanitizer'],
             builds: ['debug'],
@@ -132,7 +123,7 @@ config = [
             ],
         ]],
         // Debug build with static libs, UBSan and hardening flags.
-        ['fedora-40:ub-checks', [
+        ['fedora-41:ub-checks', [
             numCores: 4,
             tags: ['docker', 'UBSanitizer'],
             builds: ['debug'],

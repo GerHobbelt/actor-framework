@@ -5,9 +5,16 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 
 ## Unreleased
 
+### Changed
+
+- Add intermediary types for the `mail` API as `[[nodiscard]]` to make it easier
+  to spot mistakes when chaining calls.
+
 ### Added
 
 - New flow operator: `retry`.
+- New `with_userinfo` member function for URIs that allows setting the user-info
+  sub-component without going through an URI builder.
 
 ### Fixed
 
