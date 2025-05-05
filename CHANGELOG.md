@@ -17,6 +17,7 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 - New flow operators: `retry`, `combine_latest` and `on_error_resume_next`.
 - New `with_userinfo` member function for URIs that allows setting the user-info
   sub-component without going through an URI builder.
+- CAF now supports chunked encoding for HTTP clients (#2038).
 
 ### Fixed
 
@@ -46,6 +47,7 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   that tries to subscribe to it.
 - Use `localtime_s` on all Windows platforms to fix a build error with
   MSYS/UCRT64 (#2059).
+- Fix rendering of nested JSON lists (#2068).
 
 ## [1.0.2] - 2024-10-30
 
