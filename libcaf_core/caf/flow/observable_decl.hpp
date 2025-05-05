@@ -220,6 +220,12 @@ public:
   template <class Predicate>
   observable<T> retry(Predicate predicate);
 
+  /// Subscribes to the fallback observable on error for as long as the
+  /// predicate returns true.
+  template <class Predicate, class Fallback>
+  observable<T>
+  on_error_resume_next(Predicate&& predicate, Fallback&& fallback);
+
   // -- combining --------------------------------------------------------------
 
   /// Combines the output of multiple @ref observable objects into one by
@@ -239,7 +245,7 @@ public:
 
   /// Combines the output of multiple @ref observable objects into one by
   /// concatenating their outputs.
-  /// @param f The function that combines the outputs of all observables.
+  /// @param fn The function that combines the outputs of all observables.
   /// @param xs The observables to combine with this observable.
   template <class F, class... Inputs>
   auto combine_latest(F&& fn, Inputs&&... xs);
