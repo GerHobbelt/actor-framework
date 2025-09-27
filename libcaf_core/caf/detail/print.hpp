@@ -9,6 +9,7 @@
 #include "caf/none.hpp"
 
 #include <chrono>
+#include <concepts>
 #include <cstdint>
 #include <ctime>
 #include <limits>
@@ -56,7 +57,7 @@ size_t print_timestamp(char* buf, size_t buf_size, time_t ts, size_t ms);
 template <class Output>
 auto print_escaped_to(Output&& out, char c) {
   static constexpr bool is_container
-    = detail::has_push_back_v<std::decay_t<Output>>;
+    = detail::has_push_back<std::decay_t<Output>>;
   auto append = [&out](auto... chars) {
     if constexpr (is_container)
       (out.push_back(chars), ...);
@@ -170,8 +171,8 @@ void print(Buffer& buf, bool x) {
   buf.insert(buf.end(), str.begin(), str.end());
 }
 
-template <class Buffer, class T>
-std::enable_if_t<std::is_integral_v<T>> print(Buffer& buf, T x) {
+template <class Buffer, std::integral T>
+void print(Buffer& buf, T x) {
   // An integer can at most have 20 digits (UINT64_MAX).
   char stack_buffer[24];
   char* p = stack_buffer;
@@ -214,8 +215,8 @@ std::enable_if_t<std::is_integral_v<T>> print(Buffer& buf, T x) {
   } while (p != stack_buffer);
 }
 
-template <class Buffer, class T>
-std::enable_if_t<std::is_floating_point_v<T>> print(Buffer& buf, T x) {
+template <class Buffer, std::floating_point T>
+void print(Buffer& buf, T x) {
   // TODO: Check whether to_chars is available on supported compilers and
   //       re-implement using the new API as soon as possible.
   auto str = std::to_string(x);

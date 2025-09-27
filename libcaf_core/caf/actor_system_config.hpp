@@ -10,14 +10,15 @@
 #include "caf/config_option_adder.hpp"
 #include "caf/config_option_set.hpp"
 #include "caf/config_value.hpp"
+#include "caf/detail/concepts.hpp"
 #include "caf/detail/core_export.hpp"
-#include "caf/detail/type_traits.hpp"
 #include "caf/dictionary.hpp"
 #include "caf/fwd.hpp"
 #include "caf/settings.hpp"
 #include "caf/thread_hook.hpp"
 
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -111,7 +112,7 @@ public:
   /// dynamically by using `name` as identifier.
   template <class F>
   actor_system_config& add_actor_type(std::string name, F f) {
-    if constexpr (detail::has_handle_type_alias_v<F>) {
+    if constexpr (detail::has_handle_type_alias<F>) {
       // F represents an actor_from_state spawnable wrapper.
       return add_actor_factory(std::move(name),
                                make_actor_factory(f, type_list<>{}));
@@ -153,7 +154,7 @@ public:
   const std::string& program_name() const noexcept;
 
   /// Stores CLI arguments that were not consumed by CAF.
-  span<const std::string> remainder() const noexcept;
+  std::span<const std::string> remainder() const noexcept;
 
   /// Returns the remainder including the program name (`argv[0]`) suitable for
   /// passing the returned pair of arguments to C-style functions that usually
@@ -172,7 +173,7 @@ public:
   void config_file_paths(std::vector<std::string> paths);
 
   /// Returns the default paths of the configuration file.
-  span<const std::string> config_file_paths();
+  std::span<const std::string> config_file_paths();
 
   /// Tries to open `filename` and parses its content as CAF config file.
   /// @param filename Relative or absolute path to the config file.
@@ -247,7 +248,7 @@ private:
 
   void add_module_factory(module_factory_fn new_factory);
 
-  span<module_factory_fn> module_factories();
+  std::span<module_factory_fn> module_factories();
 
   // -- actor factories --------------------------------------------------------
 
@@ -257,7 +258,7 @@ private:
 
   void add_thread_hook(std::unique_ptr<thread_hook> ptr);
 
-  span<std::unique_ptr<thread_hook>> thread_hooks();
+  std::span<std::unique_ptr<thread_hook>> thread_hooks();
 
   // -- mailbox factory --------------------------------------------------------
 

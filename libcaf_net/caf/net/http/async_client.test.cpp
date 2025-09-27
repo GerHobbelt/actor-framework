@@ -74,11 +74,6 @@ bool closed_within(stream_socket fd, std::chrono::milliseconds timeout) {
   return false;
 }
 
-auto to_str(caf::const_byte_span buffer) {
-  return std::string_view{reinterpret_cast<const char*>(buffer.data()),
-                          buffer.size()};
-}
-
 using field_map = unordered_flat_map<std::string, std::string>;
 
 struct fixture {
@@ -140,7 +135,7 @@ SCENARIO("the client sends HTTP requests") {
         buf.resize(want.size());
         auto res = net::read(fd1, buf);
         check_eq(res, static_cast<ptrdiff_t>(want.size()));
-        check_eq(to_str(buf), want);
+        check_eq(to_string_view(buf), want);
       }
     }
   }
@@ -159,7 +154,7 @@ SCENARIO("the client sends HTTP requests") {
         buf.resize(want.size());
         auto res = net::read(fd1, buf);
         check_eq(res, static_cast<ptrdiff_t>(want.size()));
-        check_eq(to_str(buf), want);
+        check_eq(to_string_view(buf), want);
       }
     }
   }
@@ -169,7 +164,7 @@ SCENARIO("the client sends HTTP requests") {
       auto ret = run_client(net::http::method::post, "/foo/bar/index.html"s,
                             field_map{{"Content-Length", "13"},
                                       {"Content-Type", "plain/text"}},
-                            as_bytes(make_span(body)));
+                            as_bytes(std::span{body}));
       THEN("the output contains the formatted request") {
         std::string_view want = "POST /foo/bar/index.html HTTP/1.1\r\n"
                                 "Content-Length: 13\r\n"
@@ -180,14 +175,14 @@ SCENARIO("the client sends HTTP requests") {
         buf.resize(want.size());
         auto res = net::read(fd1, buf);
         check_eq(res, static_cast<ptrdiff_t>(want.size()));
-        check_eq(to_str(buf), want);
+        check_eq(to_string_view(buf), want);
       }
     }
     WHEN("the client sends the message without a Content-Length") {
       auto body = "Hello, world!"sv;
       auto ret = run_client(net::http::method::post, "/foo/bar/index.html"s,
                             field_map{{"Content-Type", "plain/text"}},
-                            as_bytes(make_span(body)));
+                            as_bytes(std::span{body}));
       THEN("the output contains the formatted request") {
         std::string_view want = "POST /foo/bar/index.html HTTP/1.1\r\n"
                                 "Content-Type: plain/text\r\n"
@@ -198,7 +193,7 @@ SCENARIO("the client sends HTTP requests") {
         buf.resize(want.size());
         auto res = net::read(fd1, buf);
         check_eq(res, static_cast<ptrdiff_t>(want.size()));
-        check_eq(to_str(buf), want);
+        check_eq(to_string_view(buf), want);
       }
     }
   }
@@ -209,7 +204,7 @@ SCENARIO("the client parses HTTP response into header fields") {
     std::string_view response = "HTTP/1.1 200 OK\r\n\r\n";
     WHEN("receiving from an HTTP server") {
       auto ret = run_client();
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls the application layer") {
         auto maybe_res = ret.first.get(1s);
         require(maybe_res.has_value());
@@ -228,7 +223,7 @@ SCENARIO("the client parses HTTP response into header fields") {
                                 "Content-Type: text/plain\r\n\r\n";
     WHEN("receiving from an HTTP server") {
       auto ret = run_client();
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls the application layer") {
         auto maybe_res = ret.first.get(1s);
         require(maybe_res.has_value());
@@ -251,7 +246,7 @@ SCENARIO("the client parses HTTP response into header fields") {
                                 "Hello, world!";
     WHEN("receiving from an HTTP server") {
       auto ret = run_client();
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls the application layer") {
         auto maybe_res = ret.first.get(1s);
         require(maybe_res.has_value());
@@ -260,7 +255,7 @@ SCENARIO("the client parses HTTP response into header fields") {
         auto header_fields = res.header_fields();
         check_eq(header_fields[0], std::pair{"Content-Length"s, "13"s});
         check_eq(header_fields[1], std::pair{"Content-Type"s, "text/plain"s});
-        check_eq(to_str(res.body()), "Hello, world!"sv);
+        check_eq(to_string_view(res.body()), "Hello, world!"sv);
       }
       AND_THEN("the connection is closed") {
         check(closed_within(fd1, 1s));
@@ -276,7 +271,7 @@ SCENARIO("the client receives invalid HTTP responses") {
                                 "\r\n";
     WHEN("receiving from an HTTP server") {
       auto ret = run_client();
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         auto maybe_res = ret.first.get(1s);
         check(!maybe_res);

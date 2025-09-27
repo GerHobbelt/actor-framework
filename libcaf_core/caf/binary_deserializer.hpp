@@ -7,9 +7,10 @@
 #include "caf/detail/core_export.hpp"
 #include "caf/fwd.hpp"
 #include "caf/load_inspector_base.hpp"
-#include "caf/span.hpp"
 
+#include <concepts>
 #include <cstddef>
+#include <span>
 
 namespace caf {
 
@@ -78,11 +79,11 @@ public:
 
   bool begin_field(std::string_view name, bool& is_present) noexcept;
 
-  bool begin_field(std::string_view name, span<const type_id_t> types,
+  bool begin_field(std::string_view name, std::span<const type_id_t> types,
                    size_t& index) noexcept;
 
   bool begin_field(std::string_view name, bool& is_present,
-                   span<const type_id_t> types, size_t& index) noexcept;
+                   std::span<const type_id_t> types, size_t& index) noexcept;
 
   bool end_field();
 
@@ -122,8 +123,8 @@ public:
 
   bool value(uint64_t& x) noexcept;
 
-  template <class T>
-  std::enable_if_t<std::is_integral_v<T>, bool> value(T& x) noexcept {
+  template <std::integral T>
+  bool value(T& x) noexcept {
     auto tmp = detail::squashed_int_t<T>{0};
     if (value(tmp)) {
       x = static_cast<T>(tmp);

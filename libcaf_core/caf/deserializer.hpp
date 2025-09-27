@@ -8,10 +8,11 @@
 #include "caf/detail/squashed_int.hpp"
 #include "caf/fwd.hpp"
 #include "caf/load_inspector_base.hpp"
-#include "caf/span.hpp"
 #include "caf/type_id.hpp"
 
+#include <concepts>
 #include <cstddef>
+#include <span>
 #include <string>
 #include <tuple>
 #include <type_traits>
@@ -78,12 +79,12 @@ public:
 
   virtual bool begin_field(std::string_view, bool& is_present) = 0;
 
-  virtual bool
-  begin_field(std::string_view name, span<const type_id_t> types, size_t& index)
+  virtual bool begin_field(std::string_view name,
+                           std::span<const type_id_t> types, size_t& index)
     = 0;
 
   virtual bool begin_field(std::string_view name, bool& is_present,
-                           span<const type_id_t> types, size_t& index)
+                           std::span<const type_id_t> types, size_t& index)
     = 0;
 
   virtual bool end_field() = 0;
@@ -150,8 +151,8 @@ public:
   virtual bool value(uint64_t& x) = 0;
 
   /// @copydoc value
-  template <class T>
-  std::enable_if_t<std::is_integral_v<T>, bool> value(T& x) noexcept {
+  template <std::integral T>
+  bool value(T& x) noexcept {
     auto tmp = detail::squashed_int_t<T>{0};
     if (value(tmp)) {
       x = static_cast<T>(tmp);

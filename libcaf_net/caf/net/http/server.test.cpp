@@ -93,11 +93,6 @@ public:
   }
 };
 
-auto to_str(caf::byte_span buffer) {
-  return std::string_view{reinterpret_cast<const char*>(buffer.data()),
-                          buffer.size()};
-}
-
 struct fixture {
   fixture() {
     mpx = net::multiplexer::make(nullptr);
@@ -178,9 +173,9 @@ SCENARIO("the server parses HTTP GET requests into header fields") {
         res_promise.set_value(std::move(res));
         auto hello = "Hello world!"sv;
         down->send_response(net::http::status::ok, "text/plain",
-                            as_bytes(make_span(hello)));
+                            as_bytes(std::span{hello}));
       });
-      net::write(fd1, as_bytes(make_span(request)));
+      net::write(fd1, as_bytes(std::span{request}));
       THEN("the HTTP layer parses the data and calls the application layer") {
         auto maybe_res = res_promise.get_future().get(1s);
         require(maybe_res.has_value());
@@ -196,7 +191,7 @@ SCENARIO("the server parses HTTP GET requests into header fields") {
         byte_buffer buf;
         buf.resize(response.size());
         net::read(fd1, buf);
-        check_eq(to_str(buf), response);
+        check_eq(to_string_view(buf), response);
       }
     }
   }
@@ -225,16 +220,16 @@ SCENARIO("the client receives a chunked HTTP response") {
         down->begin_header(net::http::status::ok);
         down->add_header_field("Transfer-Encoding", "chunked");
         down->end_header();
-        down->send_chunk(as_bytes(make_span(line1)));
-        down->send_chunk(as_bytes(make_span(line2)));
+        down->send_chunk(as_bytes(std::span{line1}));
+        down->send_chunk(as_bytes(std::span{line2}));
         down->send_end_of_chunks();
       });
-      net::write(fd1, as_bytes(make_span(request)));
+      net::write(fd1, as_bytes(std::span{request}));
       THEN("the HTTP layer sends a chunked response to the client") {
         byte_buffer buf;
         buf.resize(response.size());
         net::read(fd1, buf);
-        check_eq(to_str(buf), response);
+        check_eq(to_string_view(buf), response);
       }
     }
   }
@@ -271,8 +266,8 @@ SCENARIO("the client sends a multipart HTTP request") {
       res_promise.set_value(std::move(res));
     });
     WHEN("sending it to an HTTP server") {
-      net::write(fd1, as_bytes(make_span(req_headers)));
-      net::write(fd1, as_bytes(make_span(req_body)));
+      net::write(fd1, as_bytes(std::span{req_headers}));
+      net::write(fd1, as_bytes(std::span{req_body}));
       THEN("the HTTP layer parses the data and calls the application layer") {
         auto maybe_res = res_promise.get_future().get(1s);
         require(check(maybe_res.has_value()));
@@ -302,7 +297,7 @@ TEST("GH-2073 Regression - incoming data must be parsed only once") {
     res_promise.set_value(std::move(res));
     call_count++;
   });
-  net::write(fd1, as_bytes(make_span(request)));
+  net::write(fd1, as_bytes(std::span{request}));
   auto maybe_res = res_promise.get_future().get(1s);
   require(maybe_res.has_value());
   // Regression: the body can't be forwarded as a separate request.

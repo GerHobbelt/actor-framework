@@ -27,6 +27,7 @@
 
 #include <cstddef>
 #include <memory>
+#include <span>
 #include <string>
 #include <thread>
 
@@ -212,7 +213,8 @@ public:
   /// A message passing interface (MPI) in run-time checkable representation.
   using mpi = std::set<std::string>;
 
-  template <class T, class E = std::enable_if_t<!is_typed_actor_v<T>>>
+  template <class T>
+    requires(!is_typed_actor_v<T>)
   mpi message_types(type_list<T>) const {
     return mpi{};
   }
@@ -224,7 +226,8 @@ public:
       typename typed_actor<Ts...>::signatures{});
   }
 
-  template <class T, class E = std::enable_if_t<!detail::is_type_list_v<T>>>
+  template <class T>
+    requires(!detail::is_type_list_v<T>)
   mpi message_types(const T&) const {
     type_list<T> token;
     return message_types(token);
@@ -269,10 +272,10 @@ public:
   detail::global_meta_objects_guard_type meta_objects_guard() const noexcept;
 
   /// Returns the `caf.metrics.filters.actors.includes` parameter.
-  span<const std::string> metrics_actors_includes() const noexcept;
+  std::span<const std::string> metrics_actors_includes() const noexcept;
 
   /// Returns the `caf.metrics.filters.actors.excludes` parameter.
-  span<const std::string> metrics_actors_excludes() const noexcept;
+  std::span<const std::string> metrics_actors_excludes() const noexcept;
 
   /// Returns whether the system collects metrics about how many actors are
   /// running per actor type.
@@ -442,7 +445,8 @@ public:
   /// Returns a new actor with run-time type `name`, constructed
   /// with the arguments stored in `args`.
   /// @experimental
-  template <class Handle, class E = std::enable_if_t<is_handle_v<Handle>>>
+  template <class Handle>
+    requires is_handle_v<Handle>
   expected<Handle>
   spawn(const std::string& name, message args, caf::scheduler* ctx = nullptr,
         bool check_interface = true, const mpi* expected_ifs = nullptr) {

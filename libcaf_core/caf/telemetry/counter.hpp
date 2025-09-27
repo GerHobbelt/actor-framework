@@ -6,10 +6,11 @@
 
 #include "caf/detail/assert.hpp"
 #include "caf/fwd.hpp"
-#include "caf/span.hpp"
 #include "caf/telemetry/gauge.hpp"
 #include "caf/telemetry/label.hpp"
+#include "caf/telemetry/metric_type.hpp"
 
+#include <span>
 #include <type_traits>
 
 namespace caf::telemetry {
@@ -38,7 +39,7 @@ public:
     // nop
   }
 
-  explicit counter(span<const label>) noexcept {
+  explicit counter(std::span<const label>) noexcept {
     // nop
   }
 
@@ -58,15 +59,17 @@ public:
 
   /// Increments the counter by 1.
   /// @returns The new value of the counter.
-  template <class T = ValueType>
-  std::enable_if_t<std::is_same_v<T, int64_t>, T> operator++() noexcept {
+  value_type operator++() noexcept
+    requires std::is_same_v<value_type, int64_t>
+  {
     return ++gauge_;
   }
 
   /// Increments the counter by 1.
   /// @returns The old value of the counter.
-  template <class T = ValueType>
-  std::enable_if_t<std::is_same_v<T, int64_t>, T> operator++(int) noexcept {
+  value_type operator++(int) noexcept
+    requires std::is_same_v<value_type, int64_t>
+  {
     return gauge_++;
   }
 

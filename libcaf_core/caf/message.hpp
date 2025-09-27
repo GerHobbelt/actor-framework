@@ -5,7 +5,6 @@
 #pragma once
 
 #include "caf/detail/assert.hpp"
-#include "caf/detail/comparable.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/detail/implicit_conversions.hpp"
 #include "caf/detail/message_data.hpp"
@@ -264,15 +263,15 @@ message make_message_from_tuple(Tuple&& xs) {
 
 /// @relates message
 template <class Inspector>
-auto inspect(Inspector& f, message& x)
-  -> std::enable_if_t<Inspector::is_loading, decltype(x.load(f))> {
+  requires Inspector::is_loading
+auto inspect(Inspector& f, message& x) -> decltype(x.load(f)) {
   return x.load(f);
 }
 
 /// @relates message
 template <class Inspector>
-auto inspect(Inspector& f, message& x)
-  -> std::enable_if_t<!Inspector::is_loading, decltype(x.save(f))> {
+  requires(!Inspector::is_loading)
+auto inspect(Inspector& f, message& x) -> decltype(x.save(f)) {
   return x.save(f);
 }
 

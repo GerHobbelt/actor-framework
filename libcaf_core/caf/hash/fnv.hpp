@@ -7,11 +7,12 @@
 #include "caf/detail/ieee_754.hpp"
 #include "caf/inspector_access.hpp"
 #include "caf/save_inspector_base.hpp"
-#include "caf/span.hpp"
 #include "caf/type_id.hpp"
 
+#include <concepts>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <type_traits>
 
@@ -64,12 +65,12 @@ public:
     return value(static_cast<uint8_t>(is_present));
   }
 
-  bool begin_field(std::string_view, span<const type_id_t>, size_t index) {
+  bool begin_field(std::string_view, std::span<const type_id_t>, size_t index) {
     return value(index);
   }
 
-  bool begin_field(std::string_view, bool is_present, span<const type_id_t>,
-                   size_t index) {
+  bool begin_field(std::string_view, bool is_present,
+                   std::span<const type_id_t>, size_t index) {
     value(static_cast<uint8_t>(is_present));
     if (is_present)
       value(index);
@@ -112,9 +113,8 @@ public:
     return true;
   }
 
-  template <class Integral>
-  std::enable_if_t<std::is_integral_v<Integral>, bool>
-  value(Integral x) noexcept {
+  template <std::integral Integral>
+  bool value(Integral x) noexcept {
     auto begin = reinterpret_cast<const uint8_t*>(&x);
     append(begin, begin + sizeof(Integral));
     return true;

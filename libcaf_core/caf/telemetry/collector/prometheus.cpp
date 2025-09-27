@@ -59,8 +59,11 @@ template <class... Ts>
 void append(prometheus::char_buffer&, double, Ts&&...);
 
 template <class T, class... Ts>
-std::enable_if_t<std::is_integral_v<T>>
-append(prometheus::char_buffer& buf, T val, Ts&&... xs);
+  requires std::is_integral_v<T>
+void append(prometheus::char_buffer& buf, T val, Ts&&... xs) {
+  append(buf, std::to_string(val));
+  append(buf, std::forward<Ts>(xs)...);
+}
 
 template <class... Ts>
 void append(prometheus::char_buffer&, const metric_family*, Ts&&...);
@@ -117,13 +120,6 @@ void append(prometheus::char_buffer& buf, double val, Ts&&... xs) {
   } else {
     append(buf, std::to_string(val));
   }
-  append(buf, std::forward<Ts>(xs)...);
-}
-
-template <class T, class... Ts>
-std::enable_if_t<std::is_integral_v<T>>
-append(prometheus::char_buffer& buf, T val, Ts&&... xs) {
-  append(buf, std::to_string(val));
   append(buf, std::forward<Ts>(xs)...);
 }
 
@@ -206,13 +202,13 @@ void prometheus::end_scrape() {
 
 void prometheus::append_histogram(
   const metric_family* family, const metric* instance,
-  span<const int_histogram::bucket_type> buckets, int64_t sum) {
+  std::span<const int_histogram::bucket_type> buckets, int64_t sum) {
   append_histogram_impl(family, instance, buckets, sum);
 }
 
 void prometheus::append_histogram(
   const metric_family* family, const metric* instance,
-  span<const dbl_histogram::bucket_type> buckets, double sum) {
+  std::span<const dbl_histogram::bucket_type> buckets, double sum) {
   append_histogram_impl(family, instance, buckets, sum);
 }
 
@@ -264,7 +260,7 @@ namespace {
 
 template <class BucketType>
 auto make_histogram_info(const metric_family* family, const metric* instance,
-                         span<const BucketType> buckets) {
+                         std::span<const BucketType> buckets) {
   std::vector<prometheus::char_buffer> result;
   auto add_result = [&](auto&&... xs) {
     result.emplace_back();
@@ -296,7 +292,7 @@ auto make_histogram_info(const metric_family* family, const metric* instance,
 template <class BucketType, class ValueType>
 void prometheus::append_histogram_impl(const metric_family* family,
                                        const metric* instance,
-                                       span<const BucketType> buckets,
+                                       std::span<const BucketType> buckets,
                                        ValueType sum) {
   auto i = histogram_info_.find(instance);
   if (i == histogram_info_.end()) {

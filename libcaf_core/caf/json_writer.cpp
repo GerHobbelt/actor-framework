@@ -5,6 +5,7 @@
 #include "caf/json_writer.hpp"
 
 #include "caf/actor_control_block.hpp"
+#include "caf/byte_span.hpp"
 #include "caf/detail/append_hex.hpp"
 #include "caf/detail/assert.hpp"
 #include "caf/detail/print.hpp"
@@ -57,7 +58,7 @@ public:
   // -- properties -------------------------------------------------------------
 
   const_byte_span bytes() const override {
-    return {reinterpret_cast<const std::byte*>(buf_.data()), buf_.size()};
+    return to_const_byte_span(str());
   }
 
   [[nodiscard]] std::string_view str() const noexcept {
@@ -211,7 +212,7 @@ public:
     }
   }
 
-  bool begin_field(std::string_view name, span<const type_id_t> types,
+  bool begin_field(std::string_view name, std::span<const type_id_t> types,
                    size_t index) override {
     if (index >= types.size()) {
       err_ = make_error(sec::runtime_error, "index >= types.size()");
@@ -241,7 +242,7 @@ public:
   }
 
   bool begin_field(std::string_view name, bool is_present,
-                   span<const type_id_t> types, size_t index) override {
+                   std::span<const type_id_t> types, size_t index) override {
     if (is_present)
       return begin_field(name, types, index);
     else
@@ -849,12 +850,12 @@ bool json_writer::begin_field(std::string_view name, bool is_present) {
 }
 
 bool json_writer::begin_field(std::string_view name,
-                              span<const type_id_t> types, size_t index) {
+                              std::span<const type_id_t> types, size_t index) {
   return impl::cast(impl_).begin_field(name, types, index);
 }
 
 bool json_writer::begin_field(std::string_view name, bool is_present,
-                              span<const type_id_t> types, size_t index) {
+                              std::span<const type_id_t> types, size_t index) {
   return impl::cast(impl_).begin_field(name, is_present, types, index);
 }
 

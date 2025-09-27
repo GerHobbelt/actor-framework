@@ -8,6 +8,7 @@
 #include "caf/fwd.hpp"
 #include "caf/save_inspector_base.hpp"
 
+#include <concepts>
 #include <cstddef>
 
 namespace caf::detail {
@@ -43,9 +44,10 @@ public:
 
   bool begin_field(std::string_view name, bool is_present);
 
-  bool begin_field(std::string_view name, span<const type_id_t>, size_t);
+  bool begin_field(std::string_view name, std::span<const type_id_t>, size_t);
 
-  bool begin_field(std::string_view name, bool, span<const type_id_t>, size_t);
+  bool begin_field(std::string_view name, bool, std::span<const type_id_t>,
+                   size_t);
 
   bool end_field();
 
@@ -69,8 +71,8 @@ public:
 
   bool value(bool x);
 
-  template <class Integral>
-  std::enable_if_t<std::is_integral_v<Integral>, bool> value(Integral x) {
+  template <std::integral Integral>
+  bool value(Integral x) {
     if constexpr (std::is_signed_v<Integral>)
       return int_value(static_cast<int64_t>(x));
     else
@@ -113,9 +115,8 @@ public:
   }
 
   template <class T>
-  std::enable_if_t<
-    has_to_string_v<T> && !std::is_convertible_v<T, std::string_view>, bool>
-  builtin_inspect(const T& x) {
+    requires(has_to_string<T> && !std::convertible_to<T, std::string_view>)
+  bool builtin_inspect(const T& x) {
     auto str = to_string(x);
     if constexpr (std::is_convertible<decltype(str), const char*>::value) {
       const char* cstr = str;
@@ -158,7 +159,7 @@ public:
 
   template <class T>
   bool opaque_value(T& val) {
-    if constexpr (detail::is_iterable<T>::value) {
+    if constexpr (detail::iterable<T>) {
       begin_sequence(val.size());
       for (const auto& elem : val) {
         save(*this, elem);

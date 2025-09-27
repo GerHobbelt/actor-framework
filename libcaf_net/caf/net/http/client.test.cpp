@@ -97,11 +97,6 @@ public:
   }
 };
 
-auto to_str(caf::byte_span buffer) {
-  return std::string_view{reinterpret_cast<const char*>(buffer.data()),
-                          buffer.size()};
-}
-
 struct fixture {
   fixture() {
     mpx = net::multiplexer::make(nullptr);
@@ -175,7 +170,7 @@ SCENARIO("the client sends HTTP requests") {
         buf.resize(want.size());
         auto res = net::read(fd1, buf);
         check_eq(res, static_cast<ptrdiff_t>(want.size()));
-        check_eq(to_str(buf), want);
+        check_eq(to_string_view(buf), want);
       }
     }
   }
@@ -197,7 +192,7 @@ SCENARIO("the client sends HTTP requests") {
         buf.resize(want.size());
         auto res = net::read(fd1, buf);
         check_eq(res, static_cast<ptrdiff_t>(want.size()));
-        check_eq(to_str(buf), want);
+        check_eq(to_string_view(buf), want);
       }
     }
   }
@@ -209,7 +204,7 @@ SCENARIO("the client sends HTTP requests") {
         client->add_header_field("Content-Type", "plain/text");
         client->end_header();
         auto body = "Hello, world!"sv;
-        client->send_payload(as_bytes(make_span(body)));
+        client->send_payload(as_bytes(std::span{body}));
       });
       THEN("the output contains the formatted request") {
         std::string_view want = "POST /foo/bar/index.html HTTP/1.1\r\n"
@@ -221,7 +216,7 @@ SCENARIO("the client sends HTTP requests") {
         buf.resize(want.size());
         auto res = net::read(fd1, buf);
         check_eq(res, static_cast<ptrdiff_t>(want.size()));
-        check_eq(to_str(buf), want);
+        check_eq(to_string_view(buf), want);
       }
     }
   }
@@ -234,8 +229,8 @@ SCENARIO("the client sends HTTP requests") {
         client->end_header();
         auto chunk1 = "Hello, world!"sv;
         auto chunk2 = "Developer Network"sv;
-        client->send_chunk(as_bytes(make_span(chunk1)));
-        client->send_chunk(as_bytes(make_span(chunk2)));
+        client->send_chunk(as_bytes(std::span{chunk1}));
+        client->send_chunk(as_bytes(std::span{chunk2}));
         client->send_end_of_chunks();
       });
       THEN("the output contains the formatted request") {
@@ -253,7 +248,7 @@ SCENARIO("the client sends HTTP requests") {
         buf.resize(want.size());
         auto res = net::read(fd1, buf);
         check_eq(res, static_cast<ptrdiff_t>(want.size()));
-        check_eq(to_str(buf), want);
+        check_eq(to_string_view(buf), want);
       }
     }
   }
@@ -274,7 +269,7 @@ OUTLINE("sending all available HTTP methods") {
         buf.resize(want.size());
         auto res = net::read(fd1, buf);
         check_eq(res, static_cast<ptrdiff_t>(want.size()));
-        check_eq(to_str(buf), want);
+        check_eq(to_string_view(buf), want);
       }
     }
   }
@@ -297,7 +292,7 @@ SCENARIO("the client parses HTTP response into header fields") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls the application layer") {
         auto maybe_res = res_promise.get_future().get(1s);
         require(maybe_res.has_value());
@@ -316,7 +311,7 @@ SCENARIO("the client parses HTTP response into header fields") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls the application layer") {
         auto maybe_res = res_promise.get_future().get(1s);
         require(maybe_res.has_value());
@@ -338,7 +333,7 @@ SCENARIO("the client parses HTTP response into header fields") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls the application layer") {
         auto maybe_res = res_promise.get_future().get(1s);
         require(maybe_res.has_value());
@@ -360,13 +355,13 @@ SCENARIO("the client parses HTTP response into header fields") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(line1)));
+      net::write(fd1, as_bytes(std::span{line1}));
       std::this_thread::sleep_for(1ms);
-      net::write(fd1, as_bytes(make_span(line2)));
+      net::write(fd1, as_bytes(std::span{line2}));
       std::this_thread::sleep_for(1ms);
-      net::write(fd1, as_bytes(make_span(line3)));
+      net::write(fd1, as_bytes(std::span{line3}));
       std::this_thread::sleep_for(1ms);
-      net::write(fd1, as_bytes(make_span(line4)));
+      net::write(fd1, as_bytes(std::span{line4}));
       THEN("the HTTP layer parses the data and calls the application layer") {
         auto maybe_res = res_promise.get_future().get(1s);
         require(maybe_res.has_value());
@@ -388,7 +383,7 @@ SCENARIO("the client parses HTTP response into header fields") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer discards the extra content") {
         auto maybe_res = res_promise.get_future().get(1s);
         require(maybe_res.has_value());
@@ -411,7 +406,7 @@ SCENARIO("the client parses HTTP response into header fields") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         auto maybe_res = res_promise.get_future().get(1s);
         require(maybe_res.has_value());
@@ -430,7 +425,7 @@ SCENARIO("the client parses HTTP response into header fields") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         auto maybe_res = res_promise.get_future().get(1s);
         require(maybe_res.has_value());
@@ -453,7 +448,7 @@ SCENARIO("the client parses HTTP response into header fields") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
       for (auto i = 0u; i < response.size(); i++)
-        net::write(fd1, as_bytes(make_span(response).subspan(i, 1)));
+        net::write(fd1, as_bytes(std::span{response}.subspan(i, 1)));
       THEN("the HTTP layer parses the data and calls abort") {
         auto maybe_res = res_promise.get_future().get(5s);
         require(maybe_res.has_value());
@@ -473,7 +468,7 @@ SCENARIO("the client receives invalid HTTP responses") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         auto maybe_res = res_promise.get_future().get(1s);
         check(!maybe_res);
@@ -487,7 +482,7 @@ SCENARIO("the client receives invalid HTTP responses") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto* client) { client->max_response_size(10); },
                  res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer refuses the input") {
         auto maybe_res = res_promise.get_future().get(1s);
         check(!maybe_res);
@@ -501,7 +496,7 @@ SCENARIO("the client receives invalid HTTP responses") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         auto maybe_res = res_promise.get_future().get(1s);
         check(!maybe_res);
@@ -516,7 +511,7 @@ SCENARIO("the client receives invalid HTTP responses") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         check(!res_promise.get_future().get(100ms));
       }
@@ -533,7 +528,7 @@ SCENARIO("the client receives invalid HTTP responses") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         check(!res_promise.get_future().get(100ms));
       }
@@ -551,7 +546,7 @@ SCENARIO("the client receives invalid HTTP responses") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         check(!res_promise.get_future().get(100ms));
       }
@@ -568,7 +563,7 @@ SCENARIO("the client receives invalid HTTP responses") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         check(!res_promise.get_future().get(100ms));
       }
@@ -585,14 +580,14 @@ SCENARIO("the client receives invalid HTTP responses") {
     auto res_promise = async::promise<response_t>{};
     run_client([](auto*) {}, res_promise);
     WHEN("receiving from an HTTP server") {
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         check(!res_promise.get_future().get(100ms));
       }
     }
     WHEN("receiving byte by byte from an HTTP server") {
       for (auto i = 0u; i < response.size() - 14; i += 2)
-        net::write(fd1, as_bytes(make_span(response)).subspan(i, 2));
+        net::write(fd1, as_bytes(std::span{response}).subspan(i, 2));
       THEN("the HTTP layer parses the data and calls abort early") {
         check(!res_promise.get_future().get(100ms));
       }
@@ -609,7 +604,7 @@ SCENARIO("the client receives invalid HTTP responses") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         check(!res_promise.get_future().get(100ms));
       }
@@ -626,7 +621,7 @@ SCENARIO("the client receives invalid HTTP responses") {
     WHEN("receiving from an HTTP server") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the HTTP layer parses the data and calls abort") {
         check(!res_promise.get_future().get(100ms));
       }
@@ -645,7 +640,7 @@ SCENARIO("the client receives invalid HTTP responses") {
       auto res_promise = async::promise<response_t>{};
       run_client([](auto*) {}, res_promise, 0x6C);
       for (auto i = 0u; i < response.size(); i++)
-        net::write(fd1, as_bytes(make_span(response).subspan(i, 1)));
+        net::write(fd1, as_bytes(std::span{response}.subspan(i, 1)));
       THEN("the HTTP layer parses the data and calls abort") {
         auto maybe_res = res_promise.get_future().get(100ms);
         if (check(!maybe_res))
@@ -664,7 +659,7 @@ SCENARIO("apps can return errors to abort the HTTP layer") {
     WHEN("the app returns -1 for the response it receives") {
       auto res_promise = async::promise<response_t>{};
       run_failing_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the client calls abort") {
         auto maybe_res = res_promise.get_future().get(1s);
         check(!maybe_res);
@@ -681,7 +676,7 @@ SCENARIO("apps can return errors to abort the HTTP layer") {
     WHEN("the app returns -1 for the chunked response it receives") {
       auto res_promise = async::promise<response_t>{};
       run_failing_client([](auto*) {}, res_promise);
-      net::write(fd1, as_bytes(make_span(response)));
+      net::write(fd1, as_bytes(std::span{response}));
       THEN("the client calls abort") {
         auto maybe_res = res_promise.get_future().get(1s);
         check(!maybe_res);

@@ -9,12 +9,13 @@
 #include "caf/config.hpp"
 #include "caf/deep_to_string.hpp"
 #include "caf/detail/assert.hpp"
-#include "caf/detail/type_traits.hpp"
+#include "caf/detail/concepts.hpp"
 #include "caf/error.hpp"
 #include "caf/is_error_code_enum.hpp"
 #include "caf/raise_error.hpp"
 #include "caf/unit.hpp"
 
+#include <concepts>
 #include <memory>
 #include <new>
 #include <ostream>
@@ -68,10 +69,10 @@ public:
 
   // -- constructors, destructors, and assignment operators --------------------
 
-  template <class U, class = std::enable_if_t<std::is_convertible_v<U, T>
-                                              || is_error_code_enum_v<U>>>
+  template <class U>
+    requires(std::convertible_to<U, T> || is_error_code_enum_v<U>)
   expected(U x) {
-    if constexpr (std::is_convertible_v<U, T>) {
+    if constexpr (std::convertible_to<U, T>) {
       has_value_ = true;
       new (std::addressof(value_)) T(std::move(x));
     } else {
@@ -155,8 +156,8 @@ public:
     return *this;
   }
 
-  template <class U>
-  std::enable_if_t<std::is_convertible_v<U, T>, expected&> operator=(U x) {
+  template <std::convertible_to<T> U>
+  expected& operator=(U x) {
     return *this = T{std::move(x)};
   }
 
@@ -171,7 +172,8 @@ public:
     return *this;
   }
 
-  template <class Enum, class = std::enable_if_t<is_error_code_enum_v<Enum>>>
+  template <class Enum>
+    requires is_error_code_enum_v<Enum>
   expected& operator=(Enum code) {
     return *this = make_error(code);
   }
@@ -191,8 +193,8 @@ public:
   // -- modifiers --------------------------------------------------------------
 
   template <class... Args>
-  std::enable_if_t<std::is_nothrow_constructible_v<T, Args...>, T&>
-  emplace(Args&&... args) noexcept {
+    requires std::is_nothrow_constructible_v<T, Args...>
+  T& emplace(Args&&... args) noexcept {
     destroy();
     has_value_ = true;
     new (std::addressof(value_)) T(std::forward<Args>(args)...);
@@ -316,7 +318,7 @@ public:
   template <class F>
   auto and_then(F&& f) & {
     using res_t = decltype(f(value_));
-    static_assert(detail::is_expected_v<res_t>, "F must return an expected");
+    static_assert(detail::is_expected<res_t>, "F must return an expected");
     if (has_value())
       return f(value_);
     else
@@ -326,7 +328,7 @@ public:
   template <class F>
   auto and_then(F&& f) && {
     using res_t = decltype(f(std::move(value_)));
-    static_assert(detail::is_expected_v<res_t>, "F must return an expected");
+    static_assert(detail::is_expected<res_t>, "F must return an expected");
     if (has_value())
       return f(std::move(value_));
     else
@@ -336,7 +338,7 @@ public:
   template <class F>
   auto and_then(F&& f) const& {
     using res_t = decltype(f(value_));
-    static_assert(detail::is_expected_v<res_t>, "F must return an expected");
+    static_assert(detail::is_expected<res_t>, "F must return an expected");
     if (has_value())
       return f(value_);
     else
@@ -346,7 +348,7 @@ public:
   template <class F>
   auto and_then(F&& f) const&& {
     using res_t = decltype(f(std::move(value_)));
-    static_assert(detail::is_expected_v<res_t>, "F must return an expected");
+    static_assert(detail::is_expected<res_t>, "F must return an expected");
     if (has_value())
       return f(std::move(value_));
     else
@@ -424,8 +426,7 @@ public:
   template <class F>
   auto transform(F&& f) & {
     using res_t = decltype(f(value_));
-    static_assert(!detail::is_expected_v<res_t>,
-                  "F must not return an expected");
+    static_assert(!detail::is_expected<res_t>, "F must not return an expected");
     if (has_value())
       return detail::expected_from_fn(std::forward<F>(f), value_);
     else
@@ -435,8 +436,7 @@ public:
   template <class F>
   auto transform(F&& f) && {
     using res_t = decltype(f(std::move(value_)));
-    static_assert(!detail::is_expected_v<res_t>,
-                  "F must not return an expected");
+    static_assert(!detail::is_expected<res_t>, "F must not return an expected");
     if (has_value())
       return detail::expected_from_fn(std::forward<F>(f), std::move(value_));
     else
@@ -446,8 +446,7 @@ public:
   template <class F>
   auto transform(F&& f) const& {
     using res_t = decltype(f(value_));
-    static_assert(!detail::is_expected_v<res_t>,
-                  "F must not return an expected");
+    static_assert(!detail::is_expected<res_t>, "F must not return an expected");
     if (has_value())
       return detail::expected_from_fn(std::forward<F>(f), value_);
     else
@@ -457,8 +456,7 @@ public:
   template <class F>
   auto transform(F&& f) const&& {
     using res_t = decltype(f(std::move(value_)));
-    static_assert(!detail::is_expected_v<res_t>,
-                  "F must not return an expected");
+    static_assert(!detail::is_expected<res_t>, "F must not return an expected");
     if (has_value())
       return detail::expected_from_fn(std::forward<F>(f), std::move(value_));
     else
@@ -575,15 +573,15 @@ bool operator==(const error& x, const expected<T>& y) {
 
 /// @relates expected
 template <class T, class Enum>
-std::enable_if_t<is_error_code_enum_v<Enum>, bool>
-operator==(const expected<T>& x, Enum y) {
+  requires is_error_code_enum_v<Enum>
+bool operator==(const expected<T>& x, Enum y) {
   return x == make_error(y);
 }
 
 /// @relates expected
 template <class T, class Enum>
-std::enable_if_t<is_error_code_enum_v<Enum>, bool>
-operator==(Enum x, const expected<T>& y) {
+  requires is_error_code_enum_v<Enum>
+bool operator==(Enum x, const expected<T>& y) {
   return y == make_error(x);
 }
 
@@ -620,15 +618,15 @@ bool operator!=(const error& x, const expected<T>& y) {
 
 /// @relates expected
 template <class T, class Enum>
-std::enable_if_t<is_error_code_enum_v<Enum>, bool>
-operator!=(const expected<T>& x, Enum y) {
+  requires is_error_code_enum_v<Enum>
+bool operator!=(const expected<T>& x, Enum y) {
   return !(x == y);
 }
 
 /// @relates expected
 template <class T, class Enum>
-std::enable_if_t<is_error_code_enum_v<Enum>, bool>
-operator!=(Enum x, const expected<T>& y) {
+  requires is_error_code_enum_v<Enum>
+bool operator!=(Enum x, const expected<T>& y) {
   return !(x == y);
 }
 
@@ -648,7 +646,8 @@ public:
 
   // -- constructors, destructors, and assignment operators --------------------
 
-  template <class Enum, class = std::enable_if_t<is_error_code_enum_v<Enum>>>
+  template <class Enum>
+    requires is_error_code_enum_v<Enum>
   expected(Enum x) : error_(std::in_place, x) {
     // nop
   }
@@ -676,7 +675,8 @@ public:
     return *this;
   }
 
-  template <class Enum, class = std::enable_if_t<is_error_code_enum_v<Enum>>>
+  template <class Enum>
+    requires is_error_code_enum_v<Enum>
   expected& operator=(Enum code) {
     error_ = make_error(code);
     return *this;
@@ -746,7 +746,7 @@ public:
   template <class F>
   auto and_then(F&& f) & {
     using res_t = decltype(f());
-    static_assert(detail::is_expected_v<res_t>, "F must return an expected");
+    static_assert(detail::is_expected<res_t>, "F must return an expected");
     if (has_value())
       return f();
     else
@@ -756,7 +756,7 @@ public:
   template <class F>
   auto and_then(F&& f) && {
     using res_t = decltype(f());
-    static_assert(detail::is_expected_v<res_t>, "F must return an expected");
+    static_assert(detail::is_expected<res_t>, "F must return an expected");
     if (has_value())
       return f();
     else
@@ -766,7 +766,7 @@ public:
   template <class F>
   auto and_then(F&& f) const& {
     using res_t = decltype(f());
-    static_assert(detail::is_expected_v<res_t>, "F must return an expected");
+    static_assert(detail::is_expected<res_t>, "F must return an expected");
     if (has_value())
       return f();
     else
@@ -776,7 +776,7 @@ public:
   template <class F>
   auto and_then(F&& f) const&& {
     using res_t = decltype(f());
-    static_assert(detail::is_expected_v<res_t>, "F must return an expected");
+    static_assert(detail::is_expected<res_t>, "F must return an expected");
     if (has_value())
       return f();
     else
@@ -854,8 +854,7 @@ public:
   template <class F>
   auto transform(F&& f) & {
     using res_t = decltype(f());
-    static_assert(!detail::is_expected_v<res_t>,
-                  "F must not return an expected");
+    static_assert(!detail::is_expected<res_t>, "F must not return an expected");
     if (has_value())
       return detail::expected_from_fn(std::forward<F>(f));
     else
@@ -865,8 +864,7 @@ public:
   template <class F>
   auto transform(F&& f) && {
     using res_t = decltype(f());
-    static_assert(!detail::is_expected_v<res_t>,
-                  "F must not return an expected");
+    static_assert(!detail::is_expected<res_t>, "F must not return an expected");
     if (has_value())
       return detail::expected_from_fn(std::forward<F>(f));
     else
@@ -876,8 +874,7 @@ public:
   template <class F>
   auto transform(F&& f) const& {
     using res_t = decltype(f());
-    static_assert(!detail::is_expected_v<res_t>,
-                  "F must not return an expected");
+    static_assert(!detail::is_expected<res_t>, "F must not return an expected");
     if (has_value())
       return detail::expected_from_fn(std::forward<F>(f));
     else
@@ -887,8 +884,7 @@ public:
   template <class F>
   auto transform(F&& f) const&& {
     using res_t = decltype(f());
-    static_assert(!detail::is_expected_v<res_t>,
-                  "F must not return an expected");
+    static_assert(!detail::is_expected<res_t>, "F must not return an expected");
     if (has_value())
       return detail::expected_from_fn(std::forward<F>(f));
     else
@@ -953,13 +949,17 @@ template <class T>
 std::string to_string(const expected<T>& x) {
   if (x)
     return deep_to_string(*x);
-  return "!" + to_string(x.error());
+  std::string str = "!";
+  str += to_string(x.error());
+  return str;
 }
 
 inline std::string to_string(const expected<void>& x) {
   if (x)
     return "unit";
-  return "!" + to_string(x.error());
+  std::string str = "!";
+  str += to_string(x.error());
+  return str;
 }
 
 } // namespace caf

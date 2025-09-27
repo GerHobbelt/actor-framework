@@ -8,6 +8,7 @@
 #include "caf/fwd.hpp"
 #include "caf/save_inspector_base.hpp"
 
+#include <concepts>
 #include <cstddef>
 
 namespace caf {
@@ -70,10 +71,11 @@ public:
 
   bool begin_field(std::string_view, bool is_present);
 
-  bool begin_field(std::string_view, span<const type_id_t> types, size_t index);
+  bool begin_field(std::string_view, std::span<const type_id_t> types,
+                   size_t index);
 
   bool begin_field(std::string_view, bool is_present,
-                   span<const type_id_t> types, size_t index);
+                   std::span<const type_id_t> types, size_t index);
 
   bool end_field();
 
@@ -113,8 +115,8 @@ public:
 
   bool value(uint64_t x);
 
-  template <class T>
-  std::enable_if_t<std::is_integral_v<T>, bool> value(T x) {
+  template <std::integral T>
+  bool value(T x) {
     return value(static_cast<detail::squashed_int_t<T>>(x));
   }
 

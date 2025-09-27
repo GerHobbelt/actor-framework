@@ -7,6 +7,7 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Changed
 
+- CAF now requires C++20 to build.
 - When using the HTTP client API, SSL hostname validation is now enabled by
   default. Users can disable it by setting `hostname_validation` to `false` if
   necessary. This change was made to improve security by default.
@@ -24,6 +25,15 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   more consistent.
 - The default maximum message size for the length-prefix framing has been
   reduced to 64 MB. This change was made to improve security by default.
+
+### Deprecated
+
+- The type `caf::span` and the utility function `make_span` are now deprecated
+  and will be removed in the next major release. Now that CAF updated its
+  minimum required C++ standard to C++20, we have switched to using `std::span`
+  throughout the code base and users should do the same.
+- The alias `caf::net::lp::frame` is now deprecated and will be removed in the
+  next major release. Users should use `caf::chunk` directly instead.
 
 ### Added
 

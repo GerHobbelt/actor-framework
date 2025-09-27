@@ -50,7 +50,7 @@ public:
     self->set_behavior([down](const std::string& line) {
       down->begin_output();
       auto& buf = down->output_buffer();
-      auto bytes = as_bytes(make_span(line));
+      auto bytes = as_bytes(std::span{line});
       buf.insert(buf.end(), bytes.begin(), bytes.end());
       down->end_output();
     });
@@ -107,11 +107,6 @@ actor_system_config& init(actor_system_config& cfg) {
   return cfg;
 }
 
-auto to_str(caf::byte_span buffer) {
-  return std::string_view{reinterpret_cast<const char*>(buffer.data()),
-                          buffer.size()};
-}
-
 struct fixture {
   fixture() : sys(init(cfg)) {
     auto fd_pair = net::make_stream_socket_pair();
@@ -155,7 +150,7 @@ TEST("actor shells can receive messages") {
   buf.resize(msg.size());
   auto n = net::read(fd2, buf);
   check_eq(n, static_cast<ptrdiff_t>(msg.size()));
-  check_eq(to_str(buf), msg);
+  check_eq(to_string_view(buf), msg);
 }
 
 TEST("actor shells can send asynchronous messages") {
@@ -167,7 +162,7 @@ TEST("actor shells can send asynchronous messages") {
   require(mpx.start(mgr));
   fd1.id = net::invalid_socket_id;
   auto msg = "hello actor shell\n"s;
-  auto n = net::write(fd2, as_bytes(make_span(msg)));
+  auto n = net::write(fd2, as_bytes(std::span{msg}));
   check_eq(n, static_cast<ptrdiff_t>(msg.size()));
   self->receive(
     [this](const std::string& str) { check_eq(str, "hello actor shell"); },
@@ -184,7 +179,7 @@ TEST("actor shells can send request messages") {
         auto* down = app->down;
         down->begin_output();
         auto& buf = down->output_buffer();
-        auto bytes = as_bytes(make_span(line));
+        auto bytes = as_bytes(std::span{line});
         buf.insert(buf.end(), bytes.begin(), bytes.end());
         down->end_output();
       });
@@ -202,7 +197,7 @@ TEST("actor shells can send request messages") {
   buf.resize(msg.size());
   auto n = net::read(fd2, buf);
   check_eq(n, static_cast<ptrdiff_t>(msg.size()));
-  check_eq(to_str(buf), msg);
+  check_eq(to_string_view(buf), msg);
 }
 
 TEST("actor shells can use flows") {
@@ -216,7 +211,7 @@ TEST("actor shells can use flows") {
         auto* down = app->down;
         down->begin_output();
         auto& buf = down->output_buffer();
-        auto bytes = as_bytes(make_span(line));
+        auto bytes = as_bytes(std::span{line});
         buf.insert(buf.end(), bytes.begin(), bytes.end());
         down->end_output();
       });
@@ -234,7 +229,7 @@ TEST("actor shells can use flows") {
   buf.resize(msg.size());
   auto n = net::read(fd2, buf);
   check_eq(n, static_cast<ptrdiff_t>(msg.size()));
-  check_eq(to_str(buf), msg);
+  check_eq(to_string_view(buf), msg);
 }
 
 } // WITH_FIXTURE(fixture)

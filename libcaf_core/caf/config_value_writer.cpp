@@ -144,7 +144,7 @@ public:
     return true;
   }
 
-  bool begin_field(std::string_view name, span<const type_id_t> types,
+  bool begin_field(std::string_view name, std::span<const type_id_t> types,
                    size_t index) {
     SCOPE(settings*);
     if (index >= types.size()) {
@@ -164,7 +164,7 @@ public:
   }
 
   bool begin_field(std::string_view name, bool is_present,
-                   span<const type_id_t> types, size_t index) {
+                   std::span<const type_id_t> types, size_t index) {
     if (is_present)
       return begin_field(name, types, index);
     else
@@ -342,7 +342,8 @@ public:
   }
 
   template <class T>
-  std::enable_if_t<std::is_integral_v<T>, bool> value(T x) {
+    requires std::is_integral_v<T>
+  bool value(T x) {
     if constexpr (std::is_same_v<T, bool>) {
       return push(config_value{x});
     } else if constexpr (std::is_same_v<T, uint64_t>) {
@@ -492,13 +493,13 @@ bool config_value_writer::begin_field(std::string_view name, bool is_present) {
 }
 
 bool config_value_writer::begin_field(std::string_view name,
-                                      span<const type_id_t> types,
+                                      std::span<const type_id_t> types,
                                       size_t index) {
   return impl::cast(impl_).begin_field(name, types, index);
 }
 
 bool config_value_writer::begin_field(std::string_view name, bool is_present,
-                                      span<const type_id_t> types,
+                                      std::span<const type_id_t> types,
                                       size_t index) {
   return impl::cast(impl_).begin_field(name, is_present, types, index);
 }

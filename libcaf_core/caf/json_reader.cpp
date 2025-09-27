@@ -5,6 +5,7 @@
 #include "caf/json_reader.hpp"
 
 #include "caf/actor_control_block.hpp"
+#include "caf/byte_span.hpp"
 #include "caf/deserializer.hpp"
 #include "caf/detail/assert.hpp"
 #include "caf/detail/bounds_checker.hpp"
@@ -250,8 +251,7 @@ public:
   }
 
   bool load_bytes(const_byte_span bytes) override {
-    auto utf8 = std::string_view{reinterpret_cast<const char*>(bytes.data()),
-                                 bytes.size()};
+    auto utf8 = to_string_view(bytes);
     return load(utf8);
   }
 
@@ -442,7 +442,7 @@ public:
     return true;
   }
 
-  bool begin_field(std::string_view name, span<const type_id_t> types,
+  bool begin_field(std::string_view name, std::span<const type_id_t> types,
                    size_t& index) override {
     bool is_present = false;
     if (begin_field(name, is_present, types, index)) {
@@ -461,7 +461,7 @@ public:
   }
 
   bool begin_field(std::string_view name, bool& is_present,
-                   span<const type_id_t> types, size_t& index) override {
+                   std::span<const type_id_t> types, size_t& index) override {
     SCOPE(position::object);
     field_.push_back(name);
     if (auto member = find_member(top<position::object>(), name);
@@ -1018,12 +1018,12 @@ bool json_reader::begin_field(std::string_view name, bool& is_present) {
 }
 
 bool json_reader::begin_field(std::string_view name,
-                              span<const type_id_t> types, size_t& index) {
+                              std::span<const type_id_t> types, size_t& index) {
   return impl::cast(impl_).begin_field(name, types, index);
 }
 
 bool json_reader::begin_field(std::string_view name, bool& is_present,
-                              span<const type_id_t> types, size_t& index) {
+                              std::span<const type_id_t> types, size_t& index) {
   return impl::cast(impl_).begin_field(name, is_present, types, index);
 }
 
