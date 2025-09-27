@@ -215,6 +215,7 @@ caf_add_component(
     caf/detail/thread_safe_actor_clock.cpp
     caf/detail/type_id_list_builder.cpp
     caf/detail/type_id_list_builder.test.cpp
+    caf/detail/type_list.test.cpp
     caf/detail/unique_function.test.cpp
     caf/dictionary.test.cpp
     caf/disposable.cpp
@@ -243,6 +244,7 @@ caf_add_component(
     caf/flow/op/on_error_resume_next.test.cpp
     caf/flow/op/cell.test.cpp
     caf/flow/op/concat.test.cpp
+    caf/flow/op/debounce.test.cpp
     caf/flow/op/defer.test.cpp
     caf/flow/op/empty.test.cpp
     caf/flow/op/fail.test.cpp

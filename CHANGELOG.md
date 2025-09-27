@@ -17,13 +17,21 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   code. This change makes it easier to handle errors in a consistent way and to
   distinguish between requests that have been dropped and those that resulted in
   an error while processing the request (#2070).
+- The URI parser in CAF now accepts URIs that use reserved characters such as
+  `*`, `/` or `?` in the query string. This change follows the recommendation in
+  the RFC 3986, which states that "query components are often used to carry
+  identifying information in the form of key=value pairs and one frequently used
+  value is a reference to another URI".
 
 ### Added
 
-- New flow operators: `retry`, `combine_latest` and `on_error_resume_next`.
+- New flow operators: `retry`, `combine_latest`, `debounce` and
+  `on_error_resume_next`.
 - New `with_userinfo` member function for URIs that allows setting the user-info
   sub-component without going through an URI builder.
 - CAF now supports chunked encoding for HTTP clients (#2038).
+- Added a missing configuration option to the HTTP client API that allows
+  users to set the maximum size of the response.
 
 ### Fixed
 
@@ -54,6 +62,23 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 - Use `localtime_s` on all Windows platforms to fix a build error with
   MSYS/UCRT64 (#2059).
 - Fix rendering of nested JSON lists (#2068).
+- Add missing `pragma once` guards to multiple headers under `caf/net/ssl/`.
+- Fix the behavior of `use_certificate_file_if` and `use_private_key_file_if`.
+  Both functions did not leave the `caf::net::ssl::context` unchanged if one of
+  the arguments was invalid but instead applied the invalid arguments to the
+  context regardless, resulting in an OpenSSL error.
+- Fix a bug in the HTTP parser that could cause the parser to try parsing the
+  payload as a new request.
+- Fix a startup issue when configuring Prometheus export on `caf.net` (#2060).
+  This bug caused the Prometheus server to never start up unless starting at
+  least one other asynchronous server or client using the `caf.net` API.
+- Fix a bug in the URI parser that could crash the application when parsing an
+  URI with a percent-encoded character at the end of the string (#2080).
+- Fix parsing of HTTP request headers that do not use the absolute path syntax
+  in the first line (#2074).
+- Optimize templates for compile-time checks used by typed behaviors. This
+  drastically reduces memory usage during compilation and avoids OOM errors when
+  spawning typed actors with a large number of message handlers (#1970).
 
 ## [1.0.2] - 2024-10-30
 

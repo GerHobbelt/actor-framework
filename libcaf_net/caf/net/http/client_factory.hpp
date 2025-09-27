@@ -18,6 +18,7 @@
 #include "caf/async/future.hpp"
 #include "caf/async/promise.hpp"
 #include "caf/async/spsc_buffer.hpp"
+#include "caf/detail/forward_like.hpp"
 #include "caf/detail/latch.hpp"
 #include "caf/disposable.hpp"
 #include "caf/timespan.hpp"
@@ -50,11 +51,15 @@ public:
   /// Add an additional HTTP header field to the request.
   client_factory& add_header_field(std::string key, std::string value);
 
+  /// Sets the maximum response size to @p value. Defaults to 512KiB.
+  client_factory& max_response_size(size_t value);
+
   /// Add an additional HTTP header fields to the request.
   template <class KeyValueMap>
   client_factory& add_header_fields(KeyValueMap&& kv_map) {
     for (auto& [key, value] : kv_map) {
-      add_header_field(std::move(key), std::move(value));
+      add_header_field(detail::forward_like<KeyValueMap>(key),
+                       detail::forward_like<KeyValueMap>(value));
     }
     return *this;
   }
