@@ -16,6 +16,7 @@ caf_add_component(
     CAF::internal
     CAF::core
   ENUM_TYPES
+    net.lp.size_field_type
     net.http.method
     net.http.status
     net.octet_stream.errc
@@ -53,6 +54,10 @@ caf_add_component(
     caf/net/http/header.test.cpp
     caf/net/http/lower_layer.cpp
     caf/net/http/method.cpp
+    caf/net/http/multipart_reader.cpp
+    caf/net/http/multipart_reader.test.cpp
+    caf/net/http/multipart_writer.cpp
+    caf/net/http/multipart_writer.test.cpp
     caf/net/http/request.cpp
     caf/net/http/request_header.cpp
     caf/net/http/request_header.test.cpp

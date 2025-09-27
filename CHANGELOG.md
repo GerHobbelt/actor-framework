@@ -7,6 +7,9 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Changed
 
+- When using the HTTP client API, SSL hostname validation is now enabled by
+  default. Users can disable it by setting `hostname_validation` to `false` if
+  necessary. This change was made to improve security by default.
 - Serializer interfaces have received an overhaul to allow custom serialization
   of actor handles. There are also two new base types for serialization:
   `byte_reader` and `byte_writer`. These new types allow users to write generic
@@ -19,19 +22,32 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 - The configuration options under `caf.metrics-filters` have been moved to
   `caf.metrics.filters`. This change was made to make the configuration options
   more consistent.
+- The default maximum message size for the length-prefix framing has been
+  reduced to 64 MB. This change was made to improve security by default.
 
 ### Added
 
 - Added `monitor` API to WebSocket and HTTP servers in the `with` DSL (#2026).
+- When starting a server or client using length-prefix framing, users can now
+  specify the maximum message size via `max_message_size` and the number of
+  bytes for the length prefix via `size_field`.
+- The namespace `caf::net::http` now contains two new classes for dealing with
+  HTTP multipart requests and responses: `multipart_reader` and
+  `multipart_writer`.
 
 ### Fixed
 
 - Errors that arise during the `with` DSL setup of servers and clients now
   properly call `on_error` (#2026).
+- Fix UBSan finding regarding non-aligned memory allocation when spawning
+  actors.
 
 ### Removed
 
 - Removed the with DSL building base classes form `caf/net/dsl/` (#2026).
+- Removed the deprecated `actor_ostream` class and the `aout` utility. They have
+  been deprecated since CAF 1.0.0. Users should now use `println` instead, which
+  is available on actors as well as on the `actor_system`.
 
 ## [1.1.0] - 2025-07-25
 

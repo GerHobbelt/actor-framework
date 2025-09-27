@@ -84,7 +84,6 @@ caf_add_component(
     caf/actor_control_block.cpp
     caf/actor_factory.test.cpp
     caf/actor_from_state.test.cpp
-    caf/actor_ostream.cpp
     caf/actor_pool.cpp
     caf/actor_pool.test.cpp
     caf/actor_proxy.cpp
@@ -146,9 +145,9 @@ caf_add_component(
     caf/detached_actors.test.cpp
     caf/detail/abstract_worker.cpp
     caf/detail/abstract_worker_hub.cpp
-    caf/detail/actor_local_printer.cpp
     caf/detail/actor_system_access.cpp
     caf/detail/actor_system_config_access.cpp
+    caf/detail/aligned_alloc.cpp
     caf/detail/assert.cpp
     caf/detail/atomic_ref_counted.cpp
     caf/detail/base64.cpp
@@ -184,8 +183,6 @@ caf_add_component(
     caf/detail/meta_object.cpp
     caf/detail/meta_object.test.cpp
     caf/detail/monitor_action.cpp
-    caf/detail/monotonic_buffer_resource.cpp
-    caf/detail/monotonic_buffer_resource.test.cpp
     caf/detail/parse.cpp
     caf/detail/parse.test.cpp
     caf/detail/parser/chars.cpp
