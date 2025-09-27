@@ -8,6 +8,7 @@
 #include "caf/test/scenario.hpp"
 #include "caf/test/test.hpp"
 
+#include "caf/actor_control_block.hpp"
 #include "caf/dictionary.hpp"
 #include "caf/init_global_meta_objects.hpp"
 #include "caf/log/test.hpp"
@@ -217,7 +218,7 @@ struct fixture {
   // Adds a test case for a given input and expected output.
   template <class T>
   void add_test_case(std::string_view input, T val) {
-    auto f = [this, input, obj{std::move(val)}]() -> bool {
+    auto f = [input, obj{std::move(val)}](json_reader& reader) -> bool {
       auto& this_test = test::runnable::current();
       auto tmp = T{};
       auto res = this_test.check(reader.load(input))    // parse JSON
@@ -239,7 +240,7 @@ struct fixture {
 
   // Specialization for `widget` to add a test case for a given input.
   void add_test_case(std::string_view input, widget val) {
-    auto f = [this, input, obj{std::move(val)}]() -> bool {
+    auto f = [input, obj{std::move(val)}](json_reader& reader) -> bool {
       widget_mapper mapper_instance;
       reader.mapper(&mapper_instance);
       auto& this_test = test::runnable::current();
@@ -259,10 +260,11 @@ struct fixture {
   // Specialization for `std::string` so we can test all `read_json_string`
   // overloads.
   void add_test_case(std::string_view input, std::string val) {
-    auto f = [this, input, obj{std::move(val)}]() -> bool {
+    auto f = [input, obj{std::move(val)}](json_reader& reader) -> bool {
       auto& this_test = test::runnable::current();
       auto tmp = std::string{};
       // Test overload for reading from memory.
+      caf::log::test::debug("input: {}", input);
       auto res = this_test.check(reader.load(input))    // parse JSON
                  && this_test.check(reader.apply(tmp)); // deserialize object
       if (res) {
@@ -291,7 +293,7 @@ struct fixture {
   // Adds a test case that should fail.
   template <class T>
   void add_neg_test_case(std::string_view input) {
-    auto f = [this, input]() -> bool {
+    auto f = [input](json_reader& reader) -> bool {
       auto tmp = T{};
       auto res = reader.load(input)    // parse JSON
                  && reader.apply(tmp); // deserialize object
@@ -335,9 +337,7 @@ struct fixture {
 
   fixture();
 
-  json_reader reader;
-
-  std::vector<std::function<bool()>> test_cases;
+  std::vector<std::function<bool(json_reader&)>> test_cases;
 };
 
 fixture::fixture() {
@@ -462,10 +462,10 @@ WITH_FIXTURE(fixture) {
 
 TEST("json baselines") {
   size_t baseline_index = 0;
-  detail::monotonic_buffer_resource resource;
   for (auto& f : test_cases) {
     tstlog::debug("test case at index {}", baseline_index++);
-    if (!f())
+    json_reader reader;
+    if (!f(reader))
       if (auto reason = reader.get_error())
         tstlog::debug("JSON reader stopped due to: {}", reason);
   }
@@ -519,6 +519,49 @@ SCENARIO("mappers enable custom type names in JSON input") {
         } else {
           tstlog::debug("reader reported error: {}", reader.get_error());
         }
+      }
+    }
+  }
+}
+
+class custom_reader : public json_reader {
+public:
+  using super = json_reader;
+
+  using super::super;
+
+  using super::value;
+
+  bool value(strong_actor_ptr& ptr) override {
+    strong_actor_ptr_serialized = true;
+    return super::value(ptr);
+  }
+
+  bool value(weak_actor_ptr& ptr) override {
+    weak_actor_ptr_serialized = true;
+    return super::value(ptr);
+  }
+
+  bool strong_actor_ptr_serialized = false;
+
+  bool weak_actor_ptr_serialized = false;
+};
+
+SCENARIO("users can override member functions for actor serialization") {
+  GIVEN("a custom reader") {
+    custom_reader reader;
+    WHEN("serializing a strong actor pointer") {
+      strong_actor_ptr ptr;
+      reader.value(ptr);
+      THEN("the overridden function is called") {
+        check(reader.strong_actor_ptr_serialized);
+      }
+    }
+    WHEN("serializing a weak actor pointer") {
+      weak_actor_ptr ptr;
+      reader.value(ptr);
+      THEN("the overridden function is called") {
+        check(reader.weak_actor_ptr_serialized);
       }
     }
   }

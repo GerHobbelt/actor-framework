@@ -33,6 +33,7 @@
 #include "caf/flow/op/publish.hpp"
 #include "caf/flow/op/retry.hpp"
 #include "caf/flow/op/sample.hpp"
+#include "caf/flow/op/throttle_first.hpp"
 #include "caf/flow/op/zip_with.hpp"
 #include "caf/flow/step/all.hpp"
 #include "caf/flow/subscription.hpp"
@@ -264,25 +265,35 @@ public:
     return materialize().buffer(count);
   }
 
-  auto buffer(size_t count, timespan period) {
+  auto buffer(size_t count, timespan period) && {
     return materialize().buffer(count, period);
   }
 
   /// @copydoc observable::on_error_resume_next
   template <class Predicate, class Fallback>
-  auto on_error_resume_next(Predicate&& predicate, Fallback&& fallback) {
+  auto on_error_resume_next(Predicate&& predicate, Fallback&& fallback) && {
     return materialize().on_error_resume_next(
       std::forward<Predicate>(predicate), std::forward<Fallback>(fallback));
   }
 
   /// @copydoc observable::debounce
-  auto debounce(timespan period) {
+  auto debounce(timespan period) && {
     return materialize().debounce(period);
   }
 
   /// @copydoc observable::sample
-  auto sample(timespan period) {
+  auto sample(timespan period) && {
     return materialize().sample(period);
+  }
+
+  /// @copydoc observable::throttle_first
+  auto throttle_first(timespan period) && {
+    return materialize().throttle_first(period);
+  }
+
+  /// @copydoc observable::throttle_last
+  auto throttle_last(timespan period) && {
+    return materialize().throttle_last(period);
   }
 
   template <class Predicate>
@@ -311,7 +322,7 @@ public:
 
   /// @copydoc observable::retry
   template <class Predicate>
-  auto retry(Predicate predicate) {
+  auto retry(Predicate predicate) && {
     return materialize().retry(predicate);
   }
 
@@ -362,15 +373,15 @@ public:
   /// @copydoc observable::on_backpressure_buffer
   auto on_backpressure_buffer(size_t buffer_size,
                               backpressure_overflow_strategy strategy
-                              = backpressure_overflow_strategy::fail) {
+                              = backpressure_overflow_strategy::fail) && {
     return materialize().on_backpressure_buffer(buffer_size, strategy);
   }
 
-  auto on_error_complete() {
+  auto on_error_complete() && {
     return add_step(step::on_error_complete<output_type>{});
   }
 
-  auto on_error_return_item(output_type item) {
+  auto on_error_return_item(output_type item) && {
     return add_step(step::on_error_return_item<output_type>{std::move(item)});
   }
 
@@ -442,7 +453,7 @@ public:
 
   /// @copydoc observable::zip_with
   template <class F, class T0, class... Ts>
-  auto zip_with(F fn, T0 input0, Ts... inputs) {
+  auto zip_with(F fn, T0 input0, Ts... inputs) && {
     return materialize().zip_with(std::move(fn), std::move(input0),
                                   std::move(inputs)...);
   }
@@ -852,6 +863,20 @@ observable<T> observable<T>::sample(timespan period) {
   auto obs = pptr->add_child_hdl(std::in_place_type<op::interval>, period,
                                  period);
   return pptr->add_child_hdl(std::in_place_type<impl_t>, *this, std::move(obs));
+}
+
+template <class T>
+observable<T> observable<T>::throttle_first(timespan period) {
+  using impl_t = op::throttle_first<T>;
+  auto* pptr = parent();
+  auto obs = pptr->add_child_hdl(std::in_place_type<op::interval>, period,
+                                 period);
+  return pptr->add_child_hdl(std::in_place_type<impl_t>, *this, std::move(obs));
+}
+
+template <class T>
+observable<T> observable<T>::throttle_last(timespan period) {
+  return sample(period);
 }
 
 template <class T>
