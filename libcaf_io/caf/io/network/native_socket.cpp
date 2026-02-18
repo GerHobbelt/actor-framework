@@ -8,6 +8,8 @@
 
 #include "caf/detail/call_cfun.hpp"
 #include "caf/detail/critical.hpp"
+#include "caf/detail/panic.hpp"
+#include "caf/format_to_unexpected.hpp"
 #include "caf/log/io.hpp"
 #include "caf/sec.hpp"
 
@@ -65,7 +67,9 @@ auto port_of(sockaddr& what)
     default:
       break;
   }
-  CAF_CRITICAL("invalid protocol family");
+  caf::detail::panic("invalid protocol family: {} (expected AF_INET ({}) or "
+                     "AF_INET6 ({}))",
+                     what.sa_family, AF_INET, AF_INET6);
 }
 
 } // namespace
@@ -394,8 +398,8 @@ expected<string> local_addr_of_fd(native_socket fd) {
     default:
       break;
   }
-  return format_to_error(sec::invalid_protocol_family,
-                         "invalid protocol family: {}", sa->sa_family);
+  return format_to_unexpected(sec::invalid_protocol_family,
+                              "invalid protocol family: {}", sa->sa_family);
 }
 
 expected<uint16_t> local_port_of_fd(native_socket fd) {
@@ -423,8 +427,8 @@ expected<string> remote_addr_of_fd(native_socket fd) {
     default:
       break;
   }
-  return format_to_error(sec::invalid_protocol_family,
-                         "invalid protocol family: {}", sa->sa_family);
+  return format_to_unexpected(sec::invalid_protocol_family,
+                              "invalid protocol family: {}", sa->sa_family);
 }
 
 expected<uint16_t> remote_port_of_fd(native_socket fd) {

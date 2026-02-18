@@ -69,6 +69,7 @@ caf_add_component(
     ${CAF_CORE_HEADERS}
   SOURCES
     caf/abstract_actor.cpp
+    caf/abstract_actor.test.cpp
     caf/abstract_blocking_actor.cpp
     caf/abstract_mailbox.cpp
     caf/abstract_scheduled_actor.cpp
@@ -163,11 +164,13 @@ caf_add_component(
     caf/detail/blocking_behavior.cpp
     caf/detail/bounds_checker.test.cpp
     caf/detail/cleanup_and_release.cpp
+    caf/detail/cleanup_and_release.test.cpp
     caf/detail/config_consumer.cpp
     caf/detail/config_consumer.test.cpp
     caf/detail/counted_disposable.cpp
     caf/detail/counted_disposable.test.cpp
     caf/detail/critical.cpp
+    caf/detail/current_actor.cpp
     caf/detail/daemons.cpp
     caf/detail/default_mailbox.cpp
     caf/detail/default_mailbox.test.cpp
@@ -230,7 +233,6 @@ caf_add_component(
     caf/event_based_actor.test.cpp
     caf/event_based_mail.test.cpp
     caf/exit_reason.test.cpp
-    caf/expected.test.cpp
     caf/flow/byte.test.cpp
     caf/flow/combine_latest.test.cpp
     caf/flow/concat_map.test.cpp
@@ -376,6 +378,7 @@ caf_add_component(
     caf/telemetry/gauge.test.cpp
     caf/telemetry/histogram.test.cpp
     caf/telemetry/importer/process.cpp
+    caf/telemetry/importer/process.test.cpp
     caf/telemetry/label.cpp
     caf/telemetry/label.test.cpp
     caf/telemetry/label_view.cpp
@@ -389,6 +392,7 @@ caf_add_component(
     caf/thread_hook.test.cpp
     caf/timestamp.cpp
     caf/type_id.cpp
+    caf/type_id.test.cpp
     caf/type_id_list.cpp
     caf/type_id_list.test.cpp
     caf/typed_actor.test.cpp
@@ -416,6 +420,11 @@ caf_add_log_component(system)
 # further investigation.
 if(NOT MSVC AND CAF_ENABLE_TESTING)
   target_sources(caf-core-test PRIVATE caf/behavior.test.cpp)
+endif()
+
+# Don't test caf::expected if it's an alias for std::expected.
+if(NOT CAF_USE_STD_EXPECTED AND CAF_ENABLE_TESTING)
+  target_sources(caf-core-test PRIVATE caf/expected.test.cpp)
 endif()
 
 if(NOT CAF_USE_STD_FORMAT)

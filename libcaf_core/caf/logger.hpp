@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "caf/caf_deprecated.hpp"
 #include "caf/config.hpp"
 #include "caf/deep_to_string.hpp"
 #include "caf/detail/arg_wrapper.hpp"
@@ -202,13 +203,13 @@ public:
   // -- legacy API (for the logging macros) ------------------------------------
 
   /// @private
-  [[deprecated("use the new logging functions instead")]]
+  CAF_DEPRECATED("use the new logging functions instead")
   void
   legacy_api_log(unsigned level, std::string_view component, std::string msg,
                  std::source_location loc = std::source_location::current());
 
   /// @private
-  [[deprecated("use the new logging functions instead")]]
+  CAF_DEPRECATED("use the new logging functions instead")
   trace_exit_guard legacy_api_log_trace(std::string_view component,
                                         std::string msg,
                                         std::source_location loc
@@ -224,9 +225,6 @@ public:
 
   /// Returns the ID of the actor currently associated to the calling thread.
   static actor_id thread_local_aid();
-
-  /// Associates an actor ID to the calling thread and returns the last value.
-  static actor_id thread_local_aid(actor_id aid) noexcept;
 
   /// Returns whether the logger is configured to accept input for given
   /// component and log level.
@@ -336,21 +334,6 @@ private:
         loglvl, component, (caf::logger::line_builder{} << message).get());    \
     }                                                                          \
   } while (false)
-
-#define CAF_PUSH_AID(aarg)                                                     \
-  caf::actor_id CAF_PP_UNIFYN(caf_aid_tmp)                                     \
-    = caf::logger::thread_local_aid(aarg);                                     \
-  auto CAF_PP_UNIFYN(caf_aid_tmp_guard)                                        \
-    = caf::detail::scope_guard([=]() noexcept {                                \
-        caf::logger::thread_local_aid(CAF_PP_UNIFYN(caf_aid_tmp));             \
-      })
-
-#define CAF_PUSH_AID_FROM_PTR(some_ptr)                                        \
-  auto CAF_PP_UNIFYN(caf_aid_ptr) = some_ptr;                                  \
-  CAF_PUSH_AID(CAF_PP_UNIFYN(caf_aid_ptr) ? CAF_PP_UNIFYN(caf_aid_ptr)->id()   \
-                                          : 0)
-
-#define CAF_SET_AID(aid_arg) caf::logger::thread_local_aid(aid_arg)
 
 #define CAF_SET_LOGGER_SYS(ptr) caf::logger::current_logger(ptr)
 

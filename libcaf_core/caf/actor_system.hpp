@@ -9,6 +9,7 @@
 #include "caf/actor_config.hpp"
 #include "caf/actor_launcher.hpp"
 #include "caf/actor_system_module.hpp"
+#include "caf/caf_deprecated.hpp"
 #include "caf/callback.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/detail/format.hpp"
@@ -406,7 +407,7 @@ public:
     }
     auto res = dyn_spawn_impl(name, args, ctx, check_interface, expected_ifs);
     if (!res)
-      return std::move(res.error());
+      return expected<Handle>{unexpect, std::move(res.error())};
     return actor_cast<Handle>(std::move(*res));
   }
 
@@ -490,7 +491,7 @@ public:
 
   template <class, spawn_options Options = no_spawn_options>
     requires(is_unbound(Options))
-  [[deprecated("call spawn_inactive without a class parameter instead")]]
+  CAF_DEPRECATED("call spawn_inactive without a class parameter instead")
   auto spawn_inactive() {
     return spawn_inactive_impl(Options);
   }

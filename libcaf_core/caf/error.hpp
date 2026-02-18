@@ -4,9 +4,9 @@
 
 #pragma once
 
+#include "caf/caf_deprecated.hpp"
 #include "caf/detail/comparable.hpp"
 #include "caf/detail/core_export.hpp"
-#include "caf/error_code.hpp"
 #include "caf/error_code_enum.hpp"
 #include "caf/fwd.hpp"
 #include "caf/message.hpp"
@@ -96,21 +96,11 @@ public:
     // nop
   }
 
-  template <error_code_enum Enum>
-  error(error_code<Enum> code) : error(to_integer(code), type_id_v<Enum>) {
-    // nop
-  }
-
   template <error_code_enum E>
   error& operator=(E error_value) {
     error tmp{error_value};
     std::swap(data_, tmp.data_);
     return *this;
-  }
-
-  template <error_code_enum E>
-  error& operator=(error_code<E> code) {
-    return *this = code.value();
   }
 
   // -- properties -------------------------------------------------------------
@@ -140,13 +130,13 @@ public:
   std::string_view what() const noexcept;
 
   /// Returns `*this != none`.
-  [[deprecated("use valid() instead")]]
+  CAF_DEPRECATED("use valid() instead")
   explicit operator bool() const noexcept {
     return data_ != nullptr;
   }
 
   /// Returns `*this == none`.
-  [[deprecated("use empty() instead")]]
+  CAF_DEPRECATED("use empty() instead")
   bool operator!() const noexcept {
     return data_ == nullptr;
   }
@@ -168,7 +158,7 @@ public:
   /// Returns a copy of `this` if `!empty()` or else returns a new error from
   /// given arguments.
   template <class Enum, class... Ts>
-  [[deprecated("use expected<T> instead for chainable error handling")]]
+  CAF_DEPRECATED("use expected<T> instead for chainable error handling")
   error or_else(Enum code, Ts&&... args) const& {
     if (!empty())
       return *this;
@@ -181,7 +171,7 @@ public:
   /// Returns a copy of `this` if `!empty()` or else returns a new error from
   /// given arguments.
   template <class Enum, class... Ts>
-  [[deprecated("use expected<T> instead for chainable error handling")]]
+  CAF_DEPRECATED("use expected<T> instead for chainable error handling")
   error or_else(Enum code, Ts&&... args) && {
     if (!empty())
       return std::move(*this);
@@ -202,13 +192,13 @@ public:
 
   /// @cond
 
-  [[deprecated("use expected<T> instead for chainable error handling")]]
+  CAF_DEPRECATED("use expected<T> instead for chainable error handling")
   static error eval() {
     return error{};
   }
 
   template <class F, class... Fs>
-  [[deprecated("use expected<T> instead for chainable error handling")]]
+  CAF_DEPRECATED("use expected<T> instead for chainable error handling")
   static error eval(F&& f, Fs&&... fs) {
     auto x = f();
     return x ? x : eval(std::forward<Fs>(fs)...);

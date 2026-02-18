@@ -44,6 +44,10 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   `caf::actor_system::running_actors_count`. Other methods for manipulating the
   count have been removed and replaced by private methods on the `actor_system`
   since they are meant for internal use only.
+- Outstanding `http::request` objects now keep their connection "alive" for the
+  purpose of `max_connections` tracking. Previously, only open sockets counted
+  against the limit, which could cause the server to accept new connections
+  while there were still pending requests being processed.
 
 ### Deprecated
 
@@ -71,6 +75,8 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   `caf::weak_intrusive_ptr` that accept a boolean flag to control whether the
   reference count should be increased or not have been deprecated. Users should
   use the new `add_ref` and `adopt_ref` tags instead.
+- Deprecate all member functions in `caf::expected` that are not present in
+  `std::expected`.
 
 ### Added
 
@@ -90,6 +96,23 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   but can still be overridden by actors.
 - The HTTP server implementation now accepts chunked transfer encoding for
   incoming requests (#2205).
+- Users can now define `CAF_SUPPRESS_DEPRECATION_WARNINGS` to silence all
+  deprecation warnings emitted by CAF headers. By turning deprecation warnings
+  off, users can migrate their code base in multiple steps without getting less
+  urgent warnings. Of course, we recommend using this macro only for a short
+  transition period since deprecated APIs will usually be removed in the next
+  major release.
+- The new static method `caf::abstract_actor::current()` grants users
+  access to the actor currently associated with the calling thread (returns
+  `nullptr` if no actor is associated with the thread).
+- To make `caf::expected` a drop-in replacement for `std::expected`, we have
+  added missing utility types such as `caf::unexpect` and `caf::unexpected`.
+  Further, users can optionally build CAF with `CAF_USE_STD_EXPECTED` enabled to
+  have CAF use aliases to the standard library types instead of its own
+  implementation (requires C++23).
+- The class `http::request` now has an `orphaned()` method that returns `true`
+  if the underlying connection has been shut down. This allows request handlers
+  to safely discard abandoned requests.
 
 ### Fixed
 
@@ -110,6 +133,12 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 - The getters `spawn_serv` and `config_serv` have been removed from the public
   interface of `actor_system`. These actors are an implementation detail of the
   I/O module and should not be accessed directly by users.
+- The method `logger::thread_local_aid(actor_id)` as well as the macros
+  `CAF_PUSH_AID`, `CAF_PUSH_AID_FROM_PTR` and `CAF_SET_AID` have been removed.
+  They were technically part of the public API but were never intended to be
+  called by users.
+- Removed the implicit conversions from `caf::error_code` to `caf::error` and
+  from error code enums to `caf::error_code`.
 
 ## [1.1.0] - 2025-07-25
 

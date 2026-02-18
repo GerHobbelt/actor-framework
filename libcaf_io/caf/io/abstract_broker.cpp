@@ -9,6 +9,7 @@
 #include "caf/byte_span.hpp"
 #include "caf/config.hpp"
 #include "caf/detail/assert.hpp"
+#include "caf/detail/current_actor.hpp"
 #include "caf/detail/scope_guard.hpp"
 #include "caf/detail/sync_request_bouncer.hpp"
 #include "caf/event_based_actor.hpp"
@@ -19,7 +20,7 @@
 namespace caf::io {
 
 void abstract_broker::launch(scheduler* sched, bool lazy) {
-  CAF_PUSH_AID_FROM_PTR(this);
+  detail::current_actor_guard ctx_guard{this};
   CAF_ASSERT(sched != nullptr);
   CAF_ASSERT(dynamic_cast<network::multiplexer*>(sched) != nullptr);
   backend_ = static_cast<network::multiplexer*>(sched);
@@ -145,7 +146,7 @@ abstract_broker::add_tcp_scribe(const std::string& hostname, uint16_t port) {
   auto eptr = backend().new_tcp_scribe(hostname, port);
   if (eptr)
     return add_servant(std::move(*eptr));
-  return std::move(eptr.error());
+  return expected<connection_handle>{unexpect, std::move(eptr.error())};
 }
 void abstract_broker::move_scribe(scribe_ptr ptr) {
   auto lg = log::io::trace("ptr = {}", ptr);
@@ -173,7 +174,8 @@ abstract_broker::add_tcp_doorman(uint16_t port, const char* in,
     auto p = ptr->port();
     return std::make_pair(add_servant(std::move(ptr)), p);
   }
-  return std::move(eptr.error());
+  return expected<std::pair<accept_handle, uint16_t>>{unexpect,
+                                                      std::move(eptr.error())};
 }
 
 void abstract_broker::add_datagram_servant(datagram_servant_ptr ptr) {
@@ -226,7 +228,7 @@ abstract_broker::add_udp_datagram_servant(const std::string& host,
     add_datagram_servant(std::move(ptr));
     return hdl;
   }
-  return std::move(eptr.error());
+  return expected<datagram_handle>{unexpect, std::move(eptr.error())};
 }
 
 expected<std::pair<datagram_handle, uint16_t>>
@@ -242,7 +244,8 @@ abstract_broker::add_udp_datagram_servant(uint16_t port, const char* in,
     add_datagram_servant(std::move(ptr));
     return std::make_pair(hdl, p);
   }
-  return std::move(eptr.error());
+  return expected<std::pair<datagram_handle, uint16_t>>{
+    unexpect, std::move(eptr.error())};
 }
 
 void abstract_broker::move_datagram_servant(datagram_servant_ptr ptr) {

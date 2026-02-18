@@ -12,6 +12,7 @@
 #include "caf/defaults.hpp"
 #include "caf/detail/assert.hpp"
 #include "caf/detail/critical.hpp"
+#include "caf/detail/current_actor.hpp"
 #include "caf/detail/default_invoke_result_visitor.hpp"
 #include "caf/detail/mailbox_factory.hpp"
 #include "caf/detail/private_thread.hpp"
@@ -219,7 +220,7 @@ const char* scheduled_actor::name() const {
 }
 
 void scheduled_actor::launch(scheduler* sched, bool lazy) {
-  CAF_PUSH_AID_FROM_PTR(this);
+  detail::current_actor_guard ctx_guard{this};
   auto lg = log::core::trace("lazy = {}", lazy);
   if (auto* pinned = pinned_scheduler(); pinned != nullptr) {
     sched = pinned;
@@ -265,7 +266,7 @@ void scheduled_actor::deref_resumable() const noexcept {
 }
 
 void scheduled_actor::resume(scheduler* sched, uint64_t event_id) {
-  CAF_PUSH_AID(id());
+  detail::current_actor_guard ctx_guard{this};
   auto lg = log::core::trace("event-id = {}", event_id);
   if (event_id == resumable::dispose_event_id) {
     cleanup(make_error(exit_reason::user_shutdown), sched);
@@ -862,8 +863,8 @@ invoke_message_result scheduled_actor::consume(mailbox_element& x) {
         return visit(f, sres);
       }
     }
-    // Unreachable.
-    CAF_CRITICAL("invalid message type");
+    // Should be unreachable.
+    detail::critical("categorize() returned an invalid message category");
   };
   // Post-process the returned value from the function body.
   auto result = body();
