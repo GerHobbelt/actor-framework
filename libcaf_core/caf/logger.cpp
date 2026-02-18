@@ -167,10 +167,9 @@ public:
   bool accepts(unsigned level, std::string_view component_name) override {
     if (level > cfg_.verbosity)
       return false;
-    return std::none_of(global_filter_.begin(), global_filter_.end(),
-                        [=](std::string_view name) {
-                          return name == component_name;
-                        });
+    return std::ranges::none_of(global_filter_, [=](std::string_view name) {
+      return name == component_name;
+    });
   }
 
   /// Returns the output format used for the log file.
@@ -365,20 +364,18 @@ public:
   void handle_file_event(const log::event& x) {
     // Print to file if available.
     if (file_ && x.level() <= file_verbosity()
-        && none_of(file_filter_.begin(), file_filter_.end(),
-                   [&x](std::string_view name) {
-                     return name == x.component();
-                   }))
+        && std::ranges::none_of(file_filter_, [&x](std::string_view name) {
+             return name == x.component();
+           }))
       render(file_, file_format_, x);
   }
 
   void handle_console_event(const log::event& x) {
     if (x.level() > console_verbosity())
       return;
-    if (std::any_of(console_filter_.begin(), console_filter_.end(),
-                    [&x](std::string_view name) {
-                      return name == x.component();
-                    }))
+    if (std::ranges::any_of(console_filter_, [&x](std::string_view name) {
+          return name == x.component();
+        }))
       return;
     if (cfg_.console_coloring) {
       switch (x.level()) {
@@ -427,8 +424,7 @@ public:
     namespace lg = defaults::logger;
     set_message(cfg_.file_verbosity, file_filter_);
     auto file_event = log::event::make(log::level::debug, log::core::component,
-                                       detail::source_location::current(), 0,
-                                       msg);
+                                       std::source_location::current(), 0, msg);
     handle_file_event(*file_event);
     set_message(cfg_.console_verbosity, console_filter_);
     auto console_event = file_event->with_message(msg, log::keep_timestamp);
@@ -439,8 +435,7 @@ public:
     if (!accepts(log::level::debug, log::core::component))
       return;
     auto event = log::event::make(log::level::debug, log::core::component,
-                                  detail::source_location::current(), 0,
-                                  "stop");
+                                  std::source_location::current(), 0, "stop");
     handle_event(*event);
   }
 
@@ -614,7 +609,7 @@ logger::line_builder&& logger::line_builder::operator<<(char x) && {
 }
 
 void logger::legacy_api_log(unsigned level, std::string_view component,
-                            std::string msg, detail::source_location loc) {
+                            std::string msg, std::source_location loc) {
   do_log(log::event::make(level, component, loc, thread_local_aid(), msg));
 }
 

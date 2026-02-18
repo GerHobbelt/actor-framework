@@ -70,9 +70,9 @@ expected<std::pair<size_t, byte_span>> parse_chunk(byte_span input) {
     return error{};
   }
   // Extensions are not supported. Look for extension separator ;
-  if (std::find(chunk.begin(), chunk.end(), ';') != chunk.end())
+  if (std::ranges::find(chunk, ';') != chunk.end())
     return make_error(sec::logic_error, "Chunk extensions not supported.");
-  if (!std::all_of(chunk.begin(), chunk.end(), isxdigit))
+  if (!std::ranges::all_of(chunk, isxdigit))
     return make_error(sec::protocol_error, "Chunk size decoding error.");
   if (chunk.size() > sizeof(size_t))
     return make_error(sec::protocol_error,

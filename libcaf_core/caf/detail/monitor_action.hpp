@@ -44,7 +44,7 @@ public:
     // nop
   }
 
-  ~monitor_action() {
+  ~monitor_action() override {
     std::lock_guard guard{mtx_};
     if (state_ == action::state::scheduled)
       f_.~function_wrapper();
@@ -70,9 +70,10 @@ public:
 
   resume_result resume(scheduler*, size_t) override {
     // We can only run a scheduled action.
-    std::lock_guard guard{mtx_};
+    std::unique_lock guard{mtx_};
     if (state_ == action::state::scheduled) {
       state_ = action::state::disposed;
+      guard.unlock();
       f_();
       f_.~function_wrapper();
     }

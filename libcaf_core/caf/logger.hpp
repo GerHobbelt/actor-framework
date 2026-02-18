@@ -48,7 +48,7 @@ public:
   class entrypoint {
   public:
     entrypoint(unsigned level, std::string_view component,
-               detail::source_location loc)
+               std::source_location loc)
       : level_(level), component_(component), loc_(loc) {
       // nop
     }
@@ -71,7 +71,7 @@ public:
   private:
     unsigned level_;
     std::string_view component_;
-    detail::source_location loc_;
+    std::source_location loc_;
   };
 
   /// Helper class to print exit trace messages on scope exit.
@@ -170,7 +170,7 @@ public:
   template <class... Ts>
   static entrypoint
   log(unsigned level, std::string_view component,
-      detail::source_location loc = detail::source_location::current()) {
+      std::source_location loc = std::source_location::current()) {
     return {level, component, loc};
   }
 
@@ -203,17 +203,16 @@ public:
 
   /// @private
   [[deprecated("use the new logging functions instead")]]
-  void legacy_api_log(unsigned level, std::string_view component,
-                      std::string msg,
-                      detail::source_location loc
-                      = detail::source_location::current());
+  void
+  legacy_api_log(unsigned level, std::string_view component, std::string msg,
+                 std::source_location loc = std::source_location::current());
 
   /// @private
   [[deprecated("use the new logging functions instead")]]
   trace_exit_guard legacy_api_log_trace(std::string_view component,
                                         std::string msg,
-                                        detail::source_location loc
-                                        = detail::source_location::current()) {
+                                        std::source_location loc
+                                        = std::source_location::current()) {
     auto event = log::event::make(log::level::trace, component, loc,
                                   thread_local_aid(), msg);
     auto event_cpy = event;
@@ -357,10 +356,6 @@ private:
 
 #ifdef CAF_ENABLE_TRACE_LOGGING
 
-#  define CAF_LOG_TRACE(unused) CAF_VOID_STMT
-
-#else // CAF_ENABLE_TRACE_LOGGING
-
 #  define CAF_LOG_TRACE(entry_message)                                         \
     caf::logger::trace_exit_guard caf_trace_log_auto_guard;                    \
     if (auto* caf_logger_instance = caf::logger::current_logger();             \
@@ -372,6 +367,10 @@ private:
         (caf::logger::line_builder{} << "ENTRY" << entry_message).get());      \
     }                                                                          \
     static_cast<void>(0)
+
+#else // CAF_ENABLE_TRACE_LOGGING
+
+#  define CAF_LOG_TRACE(unused) CAF_VOID_STMT
 
 #endif // CAF_ENABLE_TRACE_LOGGING
 

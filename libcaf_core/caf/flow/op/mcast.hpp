@@ -216,7 +216,7 @@ public:
       out.on_subscribe(subscription{ptr});
       return disposable{std::move(ptr)};
     }
-    if (!err_) {
+    if (err_.empty()) {
       return super::empty_subscription(out);
     }
     return super::fail_subscription(out, err_);
@@ -227,7 +227,7 @@ public:
   void on_disposed(state_type* ptr, bool from_external) final {
     super::parent_->delay_fn(
       [mc = strong_this(), sptr = state_ptr_type{ptr}, from_external] {
-        if (auto i = std::find(mc->states_.begin(), mc->states_.end(), sptr);
+        if (auto i = std::ranges::find(mc->states_, sptr);
             i != mc->states_.end()) {
           // We don't care about preserving the order of elements in the vector.
           // Hence, we can swap the element to the back and then pop it.

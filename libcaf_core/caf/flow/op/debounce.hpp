@@ -29,7 +29,7 @@ public:
     fire_action_ = make_action([this] { fire(); });
   }
 
-  ~debounce_sub() {
+  ~debounce_sub() override {
     fire_action_.dispose();
   }
 
@@ -161,7 +161,7 @@ private:
     pending_.dispose();
     fire_action_.dispose();
     sub_.cancel();
-    if (!err_)
+    if (err_.empty())
       out_.on_complete();
     else
       out_.on_error(err_);

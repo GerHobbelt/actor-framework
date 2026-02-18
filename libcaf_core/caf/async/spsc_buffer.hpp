@@ -235,7 +235,7 @@ public:
     CAF_ASSERT(consumer_ != nullptr);
     CAF_ASSERT(consumer_buf_.empty());
     if constexpr (std::is_same_v<Policy, prioritize_errors_t>) {
-      if (err_) {
+      if (err_.valid()) {
         consumer_ = nullptr;
         dst.on_error(err_);
         return {false, 0};
@@ -269,7 +269,7 @@ public:
       return {true, consumed};
     }
     consumer_ = nullptr;
-    if (!err_)
+    if (err_.empty())
       dst.on_complete();
     else
       dst.on_error(err_);
@@ -342,7 +342,7 @@ struct resource_ctrl : ref_counted {
     // nop
   }
 
-  ~resource_ctrl() {
+  ~resource_ctrl() override {
     if (buf) {
       if constexpr (IsProducer) {
         buf->abort(make_error(sec::resource_destroyed));
@@ -381,7 +381,7 @@ public:
     on_wakeup_ = std::make_shared<impl_t>(std::move(on_wakeup));
   }
 
-  ~spsc_buffer_consumer() {
+  ~spsc_buffer_consumer() override {
     if (buf_) {
       buf_->cancel();
     }
@@ -625,7 +625,7 @@ public:
     on_cancel_ = std::make_shared<on_cancel_impl_t>(std::move(on_cancel));
   }
 
-  ~spsc_buffer_producer() {
+  ~spsc_buffer_producer() override {
     if (buf_) {
       buf_->close();
     }

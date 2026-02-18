@@ -18,6 +18,7 @@
 #include "caf/raise_error.hpp"
 #include "caf/term.hpp"
 
+#include <algorithm>
 #include <iostream>
 
 namespace caf::test {
@@ -306,7 +307,7 @@ public:
       indent_ -= 2;
   }
 
-  void pass(const detail::source_location& location) override {
+  void pass(const std::source_location& location) override {
     test_stats_.passed++;
     if (level_ < log::level::debug)
       return;
@@ -316,7 +317,7 @@ public:
   }
 
   void fail(binary_predicate type, std::string_view lhs, std::string_view rhs,
-            const detail::source_location& location) override {
+            const std::source_location& location) override {
     test_stats_.failed++;
     if (level_ < log::level::error)
       return;
@@ -332,7 +333,7 @@ public:
   }
 
   void fail(std::string_view arg,
-            const detail::source_location& location) override {
+            const std::source_location& location) override {
     test_stats_.failed++;
     if (level_ < log::level::error)
       return;
@@ -368,7 +369,7 @@ public:
   }
 
   void unhandled_exception(std::string_view msg,
-                           const detail::source_location& location) override {
+                           const std::source_location& location) override {
     test_stats_.failed++;
     if (level_ < log::level::error)
       return;
@@ -602,10 +603,10 @@ public:
   /// component and log level.
   bool accepts(unsigned level, std::string_view component) override {
     return level <= reporter::instance().verbosity()
-           && !std::any_of(filter_.begin(), filter_.end(),
-                           [component](const std::string& excluded) {
-                             return component == excluded;
-                           });
+           && !std::ranges::any_of(filter_,
+                                   [component](const std::string& excluded) {
+                                     return component == excluded;
+                                   });
   }
 
   // -- initialization ---------------------------------------------------------

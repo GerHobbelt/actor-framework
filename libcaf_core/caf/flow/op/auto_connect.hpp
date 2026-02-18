@@ -283,7 +283,7 @@ public:
       state_(std::make_shared<auto_connect_state<T>>(threshold, source)) {
   }
 
-  ~auto_connect() {
+  ~auto_connect() override {
     if (!pending_subscriptions_.empty()) {
       auto err = make_error(sec::disposed);
       for (auto& ptr : pending_subscriptions_) {
@@ -300,7 +300,7 @@ public:
     // Utility function to fail or complete the subscription immediately in case
     // the source is no longer connectable.
     auto short_circuit = [this, &what] {
-      if (auto& err = std::get<error>(state_->maybe_source)) {
+      if (auto& err = std::get<error>(state_->maybe_source); err.valid()) {
         return super::fail_subscription(what, err);
       }
       return super::empty_subscription(what);
