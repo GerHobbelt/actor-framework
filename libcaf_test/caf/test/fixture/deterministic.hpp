@@ -40,7 +40,7 @@ private:
   /// Wraps a resumable pointer and a mailbox element pointer.
   struct scheduling_event {
     scheduling_event(resumable* target, mailbox_element_ptr payload)
-      : target(target), item(std::move(payload)) {
+      : target(target, add_ref), item(std::move(payload)) {
       // nop
     }
 
@@ -308,6 +308,7 @@ public:
           ctx.fail({"no matching message found", loc_});
         return false;
       }
+      CAF_ASSERT(event->item != nullptr);
       if (!from_(event->item->sender) || !with_(event->item->payload)) {
         if (fail_on_mismatch)
           ctx.fail({"no matching message found", loc_});

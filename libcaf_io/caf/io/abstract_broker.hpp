@@ -79,13 +79,9 @@ public:
   friend class doorman;
   friend class datagram_servant;
 
-  // -- overridden modifiers of abstract_actor ---------------------------------
-
-  bool enqueue(mailbox_element_ptr, scheduler*) override;
-
   // -- overridden modifiers of local_actor ------------------------------------
 
-  void launch(scheduler* eu, bool lazy, bool hide) override;
+  void launch(scheduler* sched, bool lazy) override;
 
   // -- overridden modifiers of abstract_broker --------------------------------
 
@@ -93,7 +89,9 @@ public:
 
   // -- overridden modifiers of resumable --------------------------------------
 
-  resume_result resume(scheduler*, size_t) override;
+  void resume(scheduler*, uint64_t) override;
+
+  scheduler* pinned_scheduler() const noexcept final;
 
   // -- modifiers --------------------------------------------------------------
 
@@ -331,10 +329,6 @@ public:
 
   const char* name() const override;
 
-  // -- overridden observers of resumable --------------------------------------
-
-  subtype_t subtype() const noexcept override;
-
   // -- observers --------------------------------------------------------------
 
   /// Returns the number of open connections.
@@ -391,7 +385,7 @@ protected:
     auto i = elements.find(hdl);
     if (i == elements.end())
       return nullptr;
-    return std::addressof(*(i->second));
+    return i->second;
   }
 
 private:

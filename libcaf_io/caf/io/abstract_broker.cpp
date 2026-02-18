@@ -18,23 +18,16 @@
 
 namespace caf::io {
 
-bool abstract_broker::enqueue(mailbox_element_ptr ptr, scheduler*) {
-  CAF_PUSH_AID(id());
-  return scheduled_actor::enqueue(std::move(ptr), backend_);
-}
-
-void abstract_broker::launch(scheduler* sched, bool lazy, bool hide) {
+void abstract_broker::launch(scheduler* sched, bool lazy) {
   CAF_PUSH_AID_FROM_PTR(this);
   CAF_ASSERT(sched != nullptr);
   CAF_ASSERT(dynamic_cast<network::multiplexer*>(sched) != nullptr);
   backend_ = static_cast<network::multiplexer*>(sched);
-  auto lg = log::io::trace("lazy = {}, hide = {}", lazy, hide);
-  if (!hide)
-    register_at_system();
+  auto lg = log::io::trace("lazy = {}", lazy);
   if (lazy && mailbox().try_block())
     return;
   intrusive_ptr_add_ref(ctrl());
-  sched->schedule(this);
+  sched->delay(this, resumable::initialization_event_id);
 }
 
 void abstract_broker::on_cleanup(const error& reason) {
@@ -333,14 +326,16 @@ void abstract_broker::close_all() {
     datagram_servants_.begin()->second->graceful_shutdown();
 }
 
-resumable::subtype_t abstract_broker::subtype() const noexcept {
-  return io_actor;
+void abstract_broker::resume(scheduler* sched, uint64_t event_id) {
+  CAF_ASSERT(sched != nullptr);
+  // Cleanup (via dispose event) may happen from any context (e.g.,
+  // cleanup_and_release with a dummy scheduler).
+  CAF_ASSERT(sched == backend_ || event_id == resumable::dispose_event_id);
+  scheduled_actor::resume(sched, event_id);
 }
 
-resumable::resume_result abstract_broker::resume(scheduler* sched, size_t mt) {
-  CAF_ASSERT(sched != nullptr);
-  CAF_ASSERT(sched == backend_);
-  return scheduled_actor::resume(sched, mt);
+scheduler* abstract_broker::pinned_scheduler() const noexcept {
+  return backend_;
 }
 
 const char* abstract_broker::name() const {

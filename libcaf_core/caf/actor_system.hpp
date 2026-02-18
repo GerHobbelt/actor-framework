@@ -9,6 +9,7 @@
 #include "caf/actor_config.hpp"
 #include "caf/actor_launcher.hpp"
 #include "caf/actor_system_module.hpp"
+#include "caf/callback.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/detail/format.hpp"
 #include "caf/detail/init_fun_factory.hpp"
@@ -22,6 +23,7 @@
 #include "caf/prohibit_top_level_spawn_marker.hpp"
 #include "caf/spawn_options.hpp"
 #include "caf/string_algorithms.hpp"
+#include "caf/telemetry/actor_metrics.hpp"
 #include "caf/term.hpp"
 #include "caf/type_id.hpp"
 #include "caf/version.hpp"
@@ -31,6 +33,12 @@
 #include <span>
 #include <string>
 #include <thread>
+
+namespace caf::net {
+
+class abstract_actor_shell;
+
+} // namespace caf::net
 
 namespace caf::detail {
 
@@ -88,10 +96,16 @@ namespace caf {
 class CAF_CORE_EXPORT actor_system {
 public:
   friend class abstract_actor;
+  friend class actor_launcher;
+  friend class actor_pool;
+  friend class blocking_actor;
   friend class detail::actor_system_access;
+  friend class detail::response_promise_state;
   friend class local_actor;
   friend class logger;
+  friend class net::abstract_actor_shell;
   friend class net::middleman;
+  friend class scheduled_actor;
 
   template <class>
   friend class actor_from_state_t;
@@ -150,58 +164,6 @@ public:
     /// `node`. Each call to `monitor` requires one call to `demonitor` in order
     /// to unsubscribe the `observer` completely.
     virtual void demonitor(const node_id& node, const actor_addr& observer) = 0;
-  };
-
-  /// Metrics that the actor system collects by default.
-  /// @warning Do not modify these metrics in user code. Some may be used by the
-  ///          system for synchronization.
-  struct base_metrics_t {
-    /// Counts the number of messages that where rejected because the target
-    /// mailbox was closed or did not exist.
-    telemetry::int_counter* rejected_messages;
-
-    /// Counts the total number of processed messages.
-    telemetry::int_counter_family* processed_messages;
-
-    /// Counts the total number of messages that wait in a mailbox.
-    telemetry::int_gauge* queued_messages;
-  };
-
-  /// Metrics that some actors may collect in addition to the base metrics. All
-  /// families in this set use the label dimension *name* (the user-defined name
-  /// of the actor).
-  struct actor_metric_families_t {
-    /// Samples how long the actor needs to process messages.
-    telemetry::dbl_histogram_family* processing_time = nullptr;
-
-    /// Samples how long a message waits in the mailbox before the actor
-    /// processes it.
-    telemetry::dbl_histogram_family* mailbox_time = nullptr;
-
-    /// Counts how many messages are currently waiting in the mailbox.
-    telemetry::int_gauge_family* mailbox_size = nullptr;
-
-    struct {
-      // -- inbound ------------------------------------------------------------
-
-      /// Counts the total number of processed stream elements from upstream.
-      telemetry::int_counter_family* processed_elements = nullptr;
-
-      /// Tracks how many stream elements from upstream are currently buffered.
-      telemetry::int_gauge_family* input_buffer_size = nullptr;
-
-      // -- outbound -----------------------------------------------------------
-
-      /// Counts the total number of elements that have been pushed downstream.
-      telemetry::int_counter_family* pushed_elements = nullptr;
-
-      /// Tracks how many stream elements are currently waiting in the output
-      /// buffer due to insufficient credit.
-      telemetry::int_gauge_family* output_buffer_size = nullptr;
-    }
-
-    /// Wraps streaming-related actor metric families.
-    stream;
   };
 
   /// @warning The system stores a reference to `cfg`, which means the
@@ -263,27 +225,11 @@ public:
 
   // -- properties -------------------------------------------------------------
 
-  base_metrics_t& base_metrics() noexcept;
-
-  const base_metrics_t& base_metrics() const noexcept;
-
-  const actor_metric_families_t& actor_metric_families() const noexcept;
-
   /// Returns the global meta objects guard.
   detail::global_meta_objects_guard_type meta_objects_guard() const noexcept;
 
-  /// Returns the `caf.metrics.filters.actors.includes` parameter.
-  std::span<const std::string> metrics_actors_includes() const noexcept;
-
-  /// Returns the `caf.metrics.filters.actors.excludes` parameter.
-  std::span<const std::string> metrics_actors_excludes() const noexcept;
-
-  /// Returns whether the system collects metrics about how many actors are
-  /// running per actor type.
-  bool collect_running_actors_metrics() const noexcept;
-
-  /// Returns the metric family for the `caf.running-actors` metric.
-  telemetry::int_gauge_family* running_actors_metric_family() const noexcept;
+  /// Returns a set of metrics for a specific actor type.
+  telemetry::actor_metrics make_actor_metrics(std::string_view name);
 
   /// Returns the configuration of this actor system.
   const actor_system_config& config() const;
@@ -301,13 +247,6 @@ public:
   /// Configures whether this actor system calls `await_all_actors_done`
   /// in its destructor before shutting down.
   void await_actors_before_shutdown(bool new_value);
-
-  /// Returns the internal actor for dynamic spawn operations.
-  const strong_actor_ptr& spawn_serv() const;
-
-  /// Returns the internal actor for storing the runtime configuration
-  /// for this actor system.
-  const strong_actor_ptr& config_serv() const;
 
   /// Returns the metrics registry for this system.
   telemetry::metric_registry& metrics() noexcept;
@@ -356,6 +295,9 @@ public:
 
   /// Blocks this caller until all actors are done.
   void await_all_actors_done() const;
+
+  /// Returns the number of currently running actors.
+  size_t running_actors_count() const;
 
   /// Send a `node_down_msg` to `observer` if this system loses connection to
   /// `node`.
@@ -530,8 +472,7 @@ public:
     CAF_SET_LOGGER_SYS(this);
     auto res = make_actor<C>(next_actor_id(), node(), this, cfg,
                              std::forward<Ts>(xs)...);
-    auto ptr = actor_cast<C*>(res);
-    ptr->launch(cfg.sched, has_lazy_init_flag(Os), has_hide_flag(Os));
+    do_launch(actor_cast<C*>(res), cfg.sched, Os);
     return res;
   }
 
@@ -566,6 +507,9 @@ public:
   /// @endcond
 
 private:
+  using launch_callback_ptr
+    = unique_callback_ptr<void(scheduled_actor*, caf::scheduler*)>;
+
   std::pair<event_based_actor*, actor_launcher>
     spawn_inactive_impl(spawn_options);
 
@@ -576,13 +520,32 @@ private:
                   "Probably you have tried to spawn a broker.");
   }
 
+  /// Increases running-actors-count by one.
+  /// @param who The ID of the actor that is being registered.
+  /// @returns the increased count.
+  size_t inc_running_actors_count(actor_id who);
+
+  /// Decreases running-actors-count by one.
+  /// @param who The ID of the actor that is being unregistered.
+  /// @returns the decreased count.
+  size_t dec_running_actors_count(actor_id who);
+
+  /// Blocks the caller until running-actors-count becomes `expected`
+  /// (must be either 0 or 1) or timeout is reached.
+  void await_running_actors_count_equal(size_t expected,
+                                        timespan timeout = infinite) const;
+
   expected<strong_actor_ptr>
   dyn_spawn_impl(const std::string& name, message& args, caf::scheduler* ctx,
                  bool check_interface, const mpi* expected_ifs);
 
+  void message_rejected(abstract_actor* receiver);
+
   detail::mailbox_factory* mailbox_factory();
 
   void do_print(term color, const char* buf, size_t num_bytes);
+
+  void do_launch(local_actor* ptr, caf::scheduler* ctx, spawn_options options);
 
   // -- callbacks for actor_system_access --------------------------------------
 
@@ -593,6 +556,8 @@ private:
   void set_scheduler(std::unique_ptr<caf::scheduler> ptr);
 
   void set_node(node_id id);
+
+  void set_launch_callback(launch_callback_ptr callback);
 
   // -- member variables -------------------------------------------------------
 

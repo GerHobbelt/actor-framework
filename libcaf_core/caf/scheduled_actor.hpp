@@ -9,6 +9,7 @@
 #include "caf/action.hpp"
 #include "caf/async/fwd.hpp"
 #include "caf/cow_string.hpp"
+#include "caf/defaults.hpp"
 #include "caf/detail/behavior_stack.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/detail/default_mailbox.hpp"
@@ -201,19 +202,17 @@ public:
 
   const char* name() const override;
 
-  void launch(scheduler* sched, bool lazy, bool hide) override;
+  void launch(scheduler* sched, bool lazy) override;
 
   void on_cleanup(const error& reason) override;
 
   // -- overridden functions of resumable --------------------------------------
 
-  subtype_t subtype() const noexcept override;
-
   void ref_resumable() const noexcept final;
 
   void deref_resumable() const noexcept final;
 
-  resume_result resume(scheduler*, size_t) override;
+  void resume(scheduler*, uint64_t) override;
 
   // -- scheduler callbacks ----------------------------------------------------
 
@@ -834,6 +833,10 @@ private:
   /// ongoing activities.
   void cancel_flows_and_streams();
 
+  /// The maximum throughput for resuming the actor, i.e., the maximum number of
+  /// messages that the actor is allowed to consume per resume.
+  size_t max_throughput_ = defaults::scheduler::max_throughput;
+
   /// Stores actions that the actor executes after processing the current
   /// message.
   std::vector<action> actions_;
@@ -870,9 +873,6 @@ private:
 
   /// Stashes skipped messages until the actor processes the next message.
   intrusive::stack<mailbox_element> stash_;
-
-  /// Metrics to count processed messages for the actor.
-  telemetry::int_counter* processed_messages_ = nullptr;
 
   union {
     /// The default mailbox instance that we use if the user does not configure

@@ -13,10 +13,12 @@
 #include "caf/detail/assert.hpp"
 #include "caf/detail/critical.hpp"
 #include "caf/detail/daemons.hpp"
+#include "caf/detail/glob_match.hpp"
 #include "caf/detail/meta_object.hpp"
 #include "caf/detail/private_thread_pool.hpp"
 #include "caf/event_based_actor.hpp"
 #include "caf/log/core.hpp"
+#include "caf/log/system.hpp"
 #include "caf/raise_error.hpp"
 #include "caf/scheduler.hpp"
 #include "caf/spawn_options.hpp"
@@ -25,6 +27,7 @@
 #include "caf/telemetry/metric_registry.hpp"
 #include "caf/thread_owner.hpp"
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cstdio>
@@ -40,126 +43,6 @@ namespace caf {
 
 namespace {
 
-struct kvstate {
-  using key_type = std::string;
-  using mapped_type = message;
-  using subscriber_set = std::unordered_set<strong_actor_ptr>;
-  using topic_set = std::unordered_set<std::string>;
-  std::unordered_map<key_type, std::pair<mapped_type, subscriber_set>> data;
-  std::unordered_map<strong_actor_ptr, topic_set> subscribers;
-  static inline const char* name = "caf.system.config-server";
-};
-
-behavior config_serv_impl(stateful_actor<kvstate>* self) {
-  auto lg = log::core::trace("");
-  std::string wildcard = "*";
-  auto unsubscribe_all = [self](actor subscriber) {
-    auto& subscribers = self->state().subscribers;
-    auto ptr = actor_cast<strong_actor_ptr>(subscriber);
-    auto i = subscribers.find(ptr);
-    if (i == subscribers.end())
-      return;
-    for (auto& key : i->second)
-      self->state().data[key].second.erase(ptr);
-    subscribers.erase(i);
-  };
-  return {
-    // set a key/value pair
-    [=](put_atom, const std::string& key, message& msg) {
-      auto lg = log::core::trace("key = {}, msg = {}", key, msg);
-      if (key == "*")
-        return;
-      auto& vp = self->state().data[key];
-      vp.first = std::move(msg);
-      for (auto& subscriber_ptr : vp.second) {
-        // we never put a nullptr in our map
-        auto subscriber = actor_cast<actor>(subscriber_ptr);
-        if (subscriber != self->current_sender())
-          self->mail(update_atom_v, key, vp.first).send(subscriber);
-      }
-      // also iterate all subscribers for '*'
-      for (auto& subscriber : self->state().data[wildcard].second)
-        if (subscriber != self->current_sender())
-          self->mail(update_atom_v, key, vp.first)
-            .send(actor_cast<actor>(subscriber));
-    },
-    // get a key/value pair
-    [=](get_atom, std::string& key) -> message {
-      auto lg = log::core::trace("key = {}", key);
-      if (key == wildcard) {
-        std::vector<std::pair<std::string, message>> msgs;
-        for (auto& kvp : self->state().data)
-          if (kvp.first != "*")
-            msgs.emplace_back(kvp.first, kvp.second.first);
-        return make_message(std::move(msgs));
-      }
-      auto i = self->state().data.find(key);
-      return make_message(std::move(key), i != self->state().data.end()
-                                            ? i->second.first
-                                            : make_message());
-    },
-    // subscribe to a key
-    [=](subscribe_atom, const std::string& key) {
-      auto subscriber = actor_cast<strong_actor_ptr>(self->current_sender());
-      auto lg = log::core::trace("key = {}, subscriber = {}", key, subscriber);
-      if (!subscriber)
-        return;
-      self->state().data[key].second.insert(subscriber);
-      auto& subscribers = self->state().subscribers;
-      auto i = subscribers.find(subscriber);
-      if (i != subscribers.end()) {
-        i->second.insert(key);
-      } else {
-        auto addr = self->address();
-        self->monitor(subscriber, [unsubscribe_all, addr](const error&) {
-          if (auto hdl = actor_cast<actor>(addr))
-            unsubscribe_all(actor_cast<actor>(hdl));
-        });
-        subscribers.emplace(subscriber, kvstate::topic_set{key});
-      }
-    },
-    // unsubscribe from a key
-    [=](unsubscribe_atom, const std::string& key) {
-      auto subscriber = actor_cast<strong_actor_ptr>(self->current_sender());
-      if (!subscriber)
-        return;
-      auto lg = log::core::trace("key = {}, subscriber = {}", key, subscriber);
-      if (key == wildcard) {
-        unsubscribe_all(actor_cast<actor>(std::move(subscriber)));
-        return;
-      }
-      self->state().subscribers[subscriber].erase(key);
-      self->state().data[key].second.erase(subscriber);
-    },
-    // get a 'named' actor from the local registry
-    [=](registry_lookup_atom, const std::string& name) {
-      return self->home_system().registry().get(name);
-    },
-  };
-}
-
-// -- spawn server -------------------------------------------------------------
-
-// A spawn server allows users to spawn actors dynamically with a name and a
-// message containing the data for initialization. By accessing the spawn server
-// on another node, users can spawn actors remotely.
-
-struct spawn_serv_state {
-  static inline const char* name = "caf.system.spawn-server";
-};
-
-behavior spawn_serv_impl(stateful_actor<spawn_serv_state>* self) {
-  auto lg = log::core::trace("");
-  return {
-    [=](spawn_atom, const std::string& name, message& args,
-        actor_system::mpi& xs) -> result<strong_actor_ptr> {
-      auto lg = log::core::trace("name = {}, args = {}", name, args);
-      return self->system().spawn<strong_actor_ptr>(name, std::move(args),
-                                                    self->context(), true, &xs);
-    },
-  };
-}
-
 // -- stream server ------------------------------------------------------------
 
 // The stream server acts as a man-in-the-middle for all streams that cross the
@@ -174,19 +57,33 @@ behavior spawn_serv_impl(stateful_actor<spawn_serv_state>* self) {
 // process. Batch messages and ACKs are treated equally. Open, close, and error
 // messages are evaluated to add and remove state as needed.
 
-auto make_base_metrics(telemetry::metric_registry& reg) {
-  return actor_system::base_metrics_t{
-    // Initialize the base metrics.
-    reg.counter_singleton("caf.system", "rejected-messages",
-                          "Number of rejected messages.", "1", true),
-    reg.counter_family("caf.system", "processed-messages", {"name"},
-                       "Number of processed messages.", "1", true),
-    reg.gauge_singleton("caf.system", "queued-messages",
-                        "Number of messages in all mailboxes.", "1", true),
-  };
-}
+/// Metrics that the actor system collects.
+struct base_metrics_t {
+  /// Counts the number of messages that were rejected because the target
+  /// mailbox was closed or did not exist.
+  telemetry::int_counter* rejected_messages = nullptr;
 
-auto make_actor_metric_families(telemetry::metric_registry& reg) {
+  /// Counts the total number of messages that wait in a mailbox.
+  telemetry::int_gauge* queued_messages = nullptr;
+
+  /// Counts the number of actors that are currently running.
+  telemetry::int_gauge_family* running_count = nullptr;
+
+  /// Counts the total number of processed messages by actor type.
+  telemetry::int_counter_family* processed_messages = nullptr;
+
+  /// Samples how long the actor needs to process messages by actor type.
+  telemetry::dbl_histogram_family* processing_time = nullptr;
+
+  /// Samples how long a message waits in the mailbox before the actor
+  /// processes it.
+  telemetry::dbl_histogram_family* mailbox_time = nullptr;
+
+  /// Counts how many messages are currently waiting in the mailbox.
+  telemetry::int_gauge_family* mailbox_size = nullptr;
+};
+
+auto make_base_metrics(telemetry::metric_registry& reg) {
   // Handling a single message generally should take microseconds. Going up to
   // several milliseconds usually indicates a problem (or blocking operations)
   // but may still be expected for very compute-intense tasks. Single messages
@@ -203,31 +100,24 @@ auto make_actor_metric_families(telemetry::metric_registry& reg) {
     1.,     // 1s
     5.,     // 5s
   }};
-  return actor_system::actor_metric_families_t{
-    reg.histogram_family<double>("caf.actor", "processing-time", {"name"},
-                                 default_buckets,
-                                 "Time an actor needs to process messages.",
-                                 "seconds"),
-    reg.histogram_family<double>(
+  return base_metrics_t{
+    .rejected_messages = reg.counter_singleton(
+      "caf.system", "rejected-messages", "Number of rejected messages."),
+    .queued_messages = reg.gauge_singleton(
+      "caf.system", "queued-messages", "Number of messages in all mailboxes."),
+    .running_count = reg.gauge_family("caf.system", "running-actors", {"name"},
+                                      "Number of currently running actors."),
+    .processed_messages = reg.counter_family("caf.actor", "processed-messages",
+                                             {"name"},
+                                             "Number of processed messages."),
+    .processing_time = reg.histogram_family<double>(
+      "caf.actor", "processing-time", {"name"}, default_buckets,
+      "Time an actor needs to process messages.", "seconds"),
+    .mailbox_time = reg.histogram_family<double>(
       "caf.actor", "mailbox-time", {"name"}, default_buckets,
       "Time a message waits in the mailbox before processing.", "seconds"),
-    reg.gauge_family("caf.actor", "mailbox-size", {"name"},
-                     "Number of messages in the mailbox."),
-    {
-      reg.counter_family("caf.actor.stream", "processed-elements",
-                         {"name", "type"},
-                         "Number of processed stream elements from upstream."),
-      reg.gauge_family("caf.actor.stream", "input-buffer-size",
-                       {"name", "type"},
-                       "Number of buffered stream elements from upstream."),
-      reg.counter_family(
-        "caf.actor.stream", "pushed-elements", {"name", "type"},
-        "Number of elements that have been pushed downstream."),
-      reg.gauge_family("caf.actor.stream", "output-buffer-size",
-                       {"name", "type"},
-                       "Number of buffered output stream elements."),
-    },
-  };
+    .mailbox_size = reg.gauge_family("caf.actor", "mailbox-size", {"name"},
+                                     "Number of messages in the mailbox.")};
 }
 
 class print_state_impl {
@@ -325,41 +215,6 @@ public:
     }
   }
 
-  size_t inc_running() override {
-    return ++running_;
-  }
-
-  size_t dec_running() override {
-    auto new_val = --running_;
-    if (new_val <= 1) {
-      std::unique_lock guard{running_mtx_};
-      running_cv_.notify_all();
-    }
-    return new_val;
-  }
-
-  /// Returns the number of currently running actors.
-  size_t running() const override {
-    return running_.load();
-  }
-
-  /// Blocks the caller until running-actors-count becomes `expected`
-  /// (must be either 0 or 1) or timeout is reached.
-  void await_running_count_equal(size_t expected,
-                                 timespan timeout = infinite) const override {
-    CAF_ASSERT(expected == 0 || expected == 1);
-    auto lg = log::core::trace("expected = {}", expected);
-    std::unique_lock guard{running_mtx_};
-    auto pred = [this, &expected] {
-      log::core::debug("running = {}", running());
-      return running() == expected;
-    };
-    if (timeout == infinite)
-      running_cv_.wait(guard, pred);
-    else
-      running_cv_.wait_for(guard, timeout, pred);
-  }
-
   /// Removes a name mapping.
   void erase(const std::string& key) override {
     // Stores a reference to the actor we're going to remove for the same
@@ -443,10 +298,6 @@ private:
   }
 
   using entries = std::unordered_map<actor_id, strong_actor_ptr>;
-
-  std::atomic<size_t> running_ = 0;
-  mutable std::mutex running_mtx_;
-  mutable std::condition_variable running_cv_;
 
   mutable std::shared_mutex instances_mtx_;
   entries entries_;
@@ -560,9 +411,6 @@ public:
       cfg(&cfg),
       private_threads(parent) {
     memset(&flags, 0xFF, sizeof(flags)); // All flags are ON by default.
-    running_actors_metric_family
-      = metrics.gauge_family("caf.system", "running-actors", {"name"},
-                             "Number of currently running actors.");
     print_state = std::make_unique<print_state_impl>(cfg);
     meta_objects_guard = detail::global_meta_objects_guard();
     if (!meta_objects_guard)
@@ -581,9 +429,6 @@ public:
     if (auto lst = get_as<string_list>(cfg,
                                        "caf.metrics.filters.actors.excludes")) {
       metrics_actors_excludes = std::move(*lst);
-    }
-    if (!metrics_actors_includes.empty()) {
-      actor_metric_families = make_actor_metric_families(metrics);
     }
     // Spin up modules.
     for (auto fn : cfg.module_factories()) {
@@ -644,17 +489,9 @@ public:
     for (auto& mod : modules)
       if (mod)
         mod->init(cfg);
-    // Spawn config and spawn servers (lazily to not access the scheduler yet).
-    static constexpr auto Flags = hidden + lazy_init;
-    spawn_serv
-      = actor_cast<strong_actor_ptr>(parent->spawn<Flags>(spawn_serv_impl));
-    config_serv
-      = actor_cast<strong_actor_ptr>(parent->spawn<Flags>(config_serv_impl));
     // Start all modules.
     registry.start();
     private_threads.start();
-    registry.put("SpawnServ", parent->spawn_serv());
-    registry.put("ConfigServ", parent->config_serv());
     for (auto& mod : modules)
       if (mod)
         mod->start();
@@ -666,15 +503,8 @@ public:
       auto lg = log::core::trace("");
       log::core::debug("shutdown actor system");
       if (flags.await_actors_before_shutdown) {
-        registry.await_running_count_equal(0);
+        await_running_actors_count_equal(0);
       }
-      // shutdown internal actors
-      auto drop = [&](auto& x) {
-        anon_send_exit(x, exit_reason::user_shutdown);
-        x = nullptr;
-      };
-      drop(spawn_serv);
-      drop(config_serv);
       // stop modules in reverse order
       for (auto i = modules.rbegin(); i != modules.rend(); ++i) {
         auto& ptr = *i;
@@ -695,6 +525,64 @@ public:
     logger = nullptr;
   }
 
+  telemetry::actor_metrics make_actor_metrics(std::string_view name) {
+    telemetry::actor_metrics result;
+    if (flags.collect_running_actors_metrics) {
+      result.running_count
+        = base_metrics.running_count->get_or_add({{"name", name}});
+    }
+    auto matches = [name](const std::string& glob) {
+      // Note: name.data() is guaranteed to be null-terminated in this case.
+      return detail::glob_match(name.data(), glob.c_str());
+    };
+    auto enable_optional_metrics
+      = std::ranges::any_of(metrics_actors_includes, matches)
+        && std::ranges::none_of(metrics_actors_excludes, matches);
+    if (enable_optional_metrics) {
+      result.processed_messages
+        = base_metrics.processed_messages->get_or_add({{"name", name}});
+      result.processing_time
+        = base_metrics.processing_time->get_or_add({{"name", name}});
+      result.mailbox_time
+        = base_metrics.mailbox_time->get_or_add({{"name", name}});
+      result.mailbox_size
+        = base_metrics.mailbox_size->get_or_add({{"name", name}});
+    }
+    return result;
+  }
+
+  size_t inc_running_actors_count(actor_id who) {
+    auto count = ++running_actors_count;
+    log::system::debug("actor {} increased running count to {}", who, count);
+    return count;
+  }
+
+  size_t dec_running_actors_count(actor_id who) {
+    auto count = --running_actors_count;
+    log::system::debug("actor {} decreased running count to {}", who, count);
+    if (count <= 1) {
+      std::unique_lock guard{running_actors_mtx};
+      running_actors_cv.notify_all();
+    }
+    return count;
+  }
+
+  void await_running_actors_count_equal(size_t expected,
+                                        timespan timeout = infinite) {
+    CAF_ASSERT(expected == 0 || expected == 1);
+    auto lg = log::core::trace("expected = {}", expected);
+    std::unique_lock guard{running_actors_mtx};
+    auto pred = [this, &expected] {
+      auto running = running_actors_count.load();
+      log::core::debug("running = {}, expected = {}", running, expected);
+      return running == expected;
+    };
+    if (timeout == infinite)
+      running_actors_cv.wait(guard, pred);
+    else
+      running_actors_cv.wait_for(guard, timeout, pred);
+  }
+
   /// Used to generate ascending actor IDs.
   std::atomic<size_t> ids;
 
@@ -709,6 +597,15 @@ public:
 
   /// Maps well-known actor names to actor handles.
   actor_registry_impl registry;
+
+  /// The number of currently running actors.
+  std::atomic<size_t> running_actors_count = 0;
+
+  /// Mutex for the running actors count condition variable.
+  mutable std::mutex running_actors_mtx;
+
+  /// Condition variable for waiting on the running actors count.
+  mutable std::condition_variable running_actors_cv;
 
   /// Manages log output.
   intrusive_ptr<caf::logger> logger;
@@ -736,12 +633,6 @@ public:
   /// Stores flags that affect the entire actor system.
   flags_t flags;
 
-  /// Stores config parameters.
-  strong_actor_ptr config_serv;
-
-  /// Allows fully dynamic spawning of actors.
-  strong_actor_ptr spawn_serv;
-
   /// The system-wide, user-provided configuration.
   actor_system_config* cfg;
 
@@ -752,12 +643,6 @@ public:
   /// Caches the configuration parameter `caf.metrics.filters.actors.excludes`
   /// for faster lookups at runtime.
   std::vector<std::string> metrics_actors_excludes;
-
-  /// Caches families for optional actor metrics.
-  actor_metric_families_t actor_metric_families;
-
-  /// Caches the metric family for the `caf.running-actors` metric.
-  telemetry::int_gauge_family* running_actors_metric_family;
 
   /// Manages threads for detached actors.
   detail::private_thread_pool private_threads;
@@ -800,42 +685,14 @@ actor_system::~actor_system() {
 
 // -- properties ---------------------------------------------------------------
 
-actor_system::base_metrics_t& actor_system::base_metrics() noexcept {
-  return impl_->base_metrics;
-}
-
-const actor_system::base_metrics_t&
-actor_system::base_metrics() const noexcept {
-  return impl_->base_metrics;
-}
-
-const actor_system::actor_metric_families_t&
-actor_system::actor_metric_families() const noexcept {
-  return impl_->actor_metric_families;
-}
-
 detail::global_meta_objects_guard_type
 actor_system::meta_objects_guard() const noexcept {
   return impl_->meta_objects_guard;
 }
 
-std::span<const std::string>
-actor_system::metrics_actors_includes() const noexcept {
-  return impl_->metrics_actors_includes;
-}
-
-std::span<const std::string>
-actor_system::metrics_actors_excludes() const noexcept {
-  return impl_->metrics_actors_excludes;
-}
-
-bool actor_system::collect_running_actors_metrics() const noexcept {
-  return impl_->flags.collect_running_actors_metrics;
-}
-
-telemetry::int_gauge_family*
-actor_system::running_actors_metric_family() const noexcept {
-  return impl_->running_actors_metric_family;
+telemetry::actor_metrics
+actor_system::make_actor_metrics(std::string_view name) {
+  return impl_->make_actor_metrics(name);
 }
 
 const actor_system_config& actor_system::config() const {
@@ -856,14 +713,6 @@ bool actor_system::await_actors_before_shutdown() const {
 
 void actor_system::await_actors_before_shutdown(bool new_value) {
   impl_->flags.await_actors_before_shutdown = new_value;
-}
-
-const strong_actor_ptr& actor_system::spawn_serv() const {
-  return impl_->spawn_serv;
-}
-
-const strong_actor_ptr& actor_system::config_serv() const {
-  return impl_->config_serv;
 }
 
 telemetry::metric_registry& actor_system::metrics() noexcept {
@@ -929,7 +778,24 @@ actor_id actor_system::latest_actor_id() const {
 }
 
 void actor_system::await_all_actors_done() const {
-  impl_->registry.await_running_count_equal(0);
+  await_running_actors_count_equal(0);
+}
+
+size_t actor_system::inc_running_actors_count(actor_id who) {
+  return impl_->inc_running_actors_count(who);
+}
+
+size_t actor_system::dec_running_actors_count(actor_id who) {
+  return impl_->dec_running_actors_count(who);
+}
+
+size_t actor_system::running_actors_count() const {
+  return impl_->running_actors_count.load();
+}
+
+void actor_system::await_running_actors_count_equal(size_t expected,
+                                                    timespan timeout) const {
+  impl_->await_running_actors_count_equal(expected, timeout);
 }
 
 void actor_system::monitor(const node_id& node, const actor_addr& observer) {
@@ -953,7 +819,8 @@ intrusive_ptr<actor_companion> actor_system::make_companion() {
   actor_config cfg;
   cfg.mbox_factory = mailbox_factory();
   auto hdl = spawn_class<actor_companion, no_spawn_options>(cfg);
-  return intrusive_ptr<actor_companion>{actor_cast<actor_companion*>(hdl)};
+  return intrusive_ptr<actor_companion>{actor_cast<actor_companion*>(hdl),
+                                        add_ref};
 }
 
 void actor_system::thread_started(thread_owner owner) {
@@ -1027,6 +894,16 @@ void actor_system::do_print(term color, const char* buf, size_t num_bytes) {
   impl_->print_state->print(color, buf, num_bytes);
 }
 
+void actor_system::do_launch(local_actor* ptr, caf::scheduler* ctx,
+                             spawn_options options) {
+  if (!has_hide_flag(options)) {
+    ptr->setf(abstract_actor::is_registered_flag);
+    inc_running_actors_count(ptr->id());
+    // Note: decrementing the count happens in abstract_actor::cleanup().
+  }
+  ptr->launch(ctx, has_lazy_init_flag(options));
+}
+
 // -- callbacks for actor_system_access ----------------------------------------
 
 void actor_system::set_logger(intrusive_ptr<caf::logger> ptr) {
@@ -1045,6 +922,10 @@ void actor_system::set_scheduler(std::unique_ptr<caf::scheduler> ptr) {
 
 void actor_system::set_node(node_id id) {
   impl_->node = id;
+}
+
+void actor_system::message_rejected(abstract_actor*) {
+  impl_->base_metrics.rejected_messages->inc();
 }
 
 } // namespace caf

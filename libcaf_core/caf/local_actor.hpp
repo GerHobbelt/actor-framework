@@ -28,7 +28,7 @@
 #include "caf/response_type.hpp"
 #include "caf/send.hpp"
 #include "caf/spawn_options.hpp"
-#include "caf/telemetry/histogram.hpp"
+#include "caf/telemetry/actor_metrics.hpp"
 #include "caf/timespan.hpp"
 
 #include <cstdint>
@@ -50,39 +50,6 @@ public:
   /// Defines a monotonic clock suitable for measuring intervals.
   using clock_type = std::chrono::steady_clock;
 
-  /// Optional metrics collected by individual actors when configured to do so.
-  struct metrics_t {
-    /// Samples how long the actor needs to process messages.
-    telemetry::dbl_histogram* processing_time = nullptr;
-
-    /// Samples how long messages wait in the mailbox before being processed.
-    telemetry::dbl_histogram* mailbox_time = nullptr;
-
-    /// Counts how many messages are currently waiting in the mailbox.
-    telemetry::int_gauge* mailbox_size = nullptr;
-  };
-
-  /// Optional metrics for inbound stream traffic collected by individual actors
-  /// when configured to do so.
-  struct inbound_stream_metrics_t {
-    /// Counts the total number of processed stream elements from upstream.
-    telemetry::int_counter* processed_elements = nullptr;
-
-    /// Tracks how many stream elements from upstream are currently buffered.
-    telemetry::int_gauge* input_buffer_size = nullptr;
-  };
-
-  /// Optional metrics for outbound stream traffic collected by individual
-  /// actors when configured to do so.
-  struct outbound_stream_metrics_t {
-    /// Counts the total number of elements that have been pushed downstream.
-    telemetry::int_counter* pushed_elements = nullptr;
-
-    /// Tracks how many stream elements are currently waiting in the output
-    /// buffer due to insufficient credit.
-    telemetry::int_gauge* output_buffer_size = nullptr;
-  };
-
   // -- constructors, destructors, and assignment operators --------------------
 
   local_actor(actor_config& cfg);
@@ -98,7 +65,7 @@ public:
 
   // -- pure virtual modifiers -------------------------------------------------
 
-  virtual void launch(scheduler* sched, bool lazy, bool hide) = 0;
+  virtual void launch(scheduler* sched, bool lazy) = 0;
 
   // -- time -------------------------------------------------------------------
 
@@ -171,10 +138,10 @@ public:
   template <class Handle>
   void send_exit(const Handle& receiver, error reason) {
     if (receiver)
-      receiver->enqueue(make_mailbox_element(ctrl(), make_message_id(),
-                                             exit_msg{address(),
-                                                      std::move(reason)}),
-                        context());
+      receiver->enqueue(
+        make_mailbox_element({ctrl(), add_ref}, make_message_id(),
+                             exit_msg{address(), std::move(reason)}),
+        context());
   }
 
   template <message_priority Priority = message_priority::normal, class Handle,
@@ -411,10 +378,8 @@ protected:
   /// Factory function for returning initial behavior in function-based actors.
   detail::unique_function<behavior(local_actor*)> initial_behavior_fac_;
 
-  metrics_t metrics_;
-
-  /// Tracks the current number of running actors of this type.
-  telemetry::int_gauge* running_count_ = nullptr;
+  /// Stores the metrics for this actor.
+  telemetry::actor_metrics metrics_;
 
 private:
   virtual void do_unstash(mailbox_element_ptr ptr) = 0;

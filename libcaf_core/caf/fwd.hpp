@@ -32,6 +32,7 @@ template <class> class expected;
 template <class> class function_view;
 template <class> class intrusive_cow_ptr;
 template <class> class intrusive_ptr;
+template <class> class placement_ptr;
 template <class> class typed_stream;
 template <class> class weak_intrusive_ptr;
 
@@ -153,6 +154,8 @@ class stateful_actor;
 
 // -- structs ------------------------------------------------------------------
 
+struct add_ref_t;
+struct adopt_ref_t;
 struct down_msg;
 struct dynamically_typed;
 struct exit_msg;
@@ -190,6 +193,7 @@ enum class exit_reason : uint8_t;
 enum class invoke_message_result;
 enum class pec : uint8_t;
 enum class sec : uint8_t;
+enum class term;
 enum class thread_owner;
 
 // -- aliases ------------------------------------------------------------------
@@ -343,6 +347,7 @@ class disposer;
 class dynamic_message_data;
 class message_data;
 class private_thread;
+class response_promise_state;
 class stream_bridge;
 class stream_bridge_sub;
 

@@ -27,6 +27,7 @@
 #include "caf/mixin/requester.hpp"
 #include "caf/none.hpp"
 #include "caf/policy/arg.hpp"
+#include "caf/telemetry/actor_metrics.hpp"
 #include "caf/typed_actor.hpp"
 
 #include <chrono>
@@ -167,7 +168,7 @@ public:
 
   const char* name() const override;
 
-  void launch(scheduler* sched, bool lazy, bool hide) override;
+  void launch(scheduler* sched, bool lazy) override;
 
   // -- virtual modifiers ------------------------------------------------------
 

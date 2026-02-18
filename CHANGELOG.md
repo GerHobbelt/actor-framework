@@ -35,6 +35,15 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   `CAF_ENABLE_TRACE_LOGGING` to `ON`. When using the `configure` script, this
   can be achieved by passing the new `--enable-trace-logging` option to the
   script.
+- The classes `scheduler` and `resumable` have received a complete overhaul to
+  better hide implementation details and to improve maintainability.
+- The `is_sum` parameter for counters now defaults to `true` instead of `false`.
+  In the Prometheus output, this means that name for the counter will be
+  suffixed with `_total`, which is the standard suffix for counters.
+- The method `caf::actor_registry::running` moved to
+  `caf::actor_system::running_actors_count`. Other methods for manipulating the
+  count have been removed and replaced by private methods on the `actor_system`
+  since they are meant for internal use only.
 
 ### Deprecated
 
@@ -58,9 +67,16 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   has been default-constructed or holds a valid error code.
 - The methods `or_else` and `eval` on `caf::error` are now deprecated since they
   overlap with methods such as `transform` and `and_then` on `caf::expected`.
+- The constructors and assignment operators of `caf::intrusive_ptr` and
+  `caf::weak_intrusive_ptr` that accept a boolean flag to control whether the
+  reference count should be increased or not have been deprecated. Users should
+  use the new `add_ref` and `adopt_ref` tags instead.
 
 ### Added
 
+- CAF's intrusive pointer API now uses explicit `add_ref` and `adopt_ref` tags
+  to control whether the reference count should be increased or not instead of
+  relying on boolean flags.
 - Added `monitor` API to WebSocket and HTTP servers in the `with` DSL (#2026).
 - When starting a server or client using length-prefix framing, users can now
   specify the maximum message size via `max_message_size` and the number of
@@ -72,6 +88,8 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   `actor_system_config` by calling `exception_handler(my_handler)`. This handler
   then gets passed down to all scheduled actors as the default exception handler
   but can still be overridden by actors.
+- The HTTP server implementation now accepts chunked transfer encoding for
+  incoming requests (#2205).
 
 ### Fixed
 
@@ -81,6 +99,7 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   actors.
 - Fix build issues on some BSD derivatives (#2135).
 - Fix alignment of `caf::async::batch` on 32bit ARM architecture (#2142).
+- Timestamps in log output are now rendered without surrounding quotes (#2216).
 
 ### Removed
 
@@ -88,6 +107,9 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 - Removed the deprecated `actor_ostream` class and the `aout` utility. They have
   been deprecated since CAF 1.0.0. Users should now use `println` instead, which
   is available on actors as well as on the `actor_system`.
+- The getters `spawn_serv` and `config_serv` have been removed from the public
+  interface of `actor_system`. These actors are an implementation detail of the
+  I/O module and should not be accessed directly by users.
 
 ## [1.1.0] - 2025-07-25
 
