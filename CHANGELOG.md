@@ -48,6 +48,10 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   purpose of `max_connections` tracking. Previously, only open sockets counted
   against the limit, which could cause the server to accept new connections
   while there were still pending requests being processed.
+- Metrics actor name filters (`caf.metrics.filters.include` and
+  `caf.metrics.filters.exclude`) now use simple wildcard matching with `*`
+  (zero or more characters) and `?` (exactly one character) only. Glob-style
+  patterns (`**`, `/`, `\`) are no longer supported.
 
 ### Deprecated
 
@@ -77,6 +81,12 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   use the new `add_ref` and `adopt_ref` tags instead.
 - Deprecate all member functions in `caf::expected` that are not present in
   `std::expected`.
+- The enumerator `spawn_options::priority_aware_flag` is a relict of pre-0.18
+  versions of CAF and had no effect for a long time. It is now deprecated and
+  will be removed in the next major release.
+- The `operator bool` on `caf::error_code` is now deprecated. Use `.empty()` or
+  `.valid()` instead to determine whether an error code was default-constructed
+  or holds a non-zero value (#2211).
 
 ### Added
 
@@ -113,6 +123,10 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 - The class `http::request` now has an `orphaned()` method that returns `true`
   if the underlying connection has been shut down. This allows request handlers
   to safely discard abandoned requests.
+- The new configuration option `caf.clock.cleanup-interval` enables periodic
+  cleanup of disposed jobs from the actor clock. By setting this option, users
+  can reduce the memory usage of the actor clock when the application frequently
+  schedules actions with long delays that usually get disposed before they run.
 
 ### Fixed
 

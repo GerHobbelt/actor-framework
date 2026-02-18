@@ -9,6 +9,7 @@
 #include "caf/test/block_type.hpp"
 #include "caf/test/context.hpp"
 
+#include "caf/detail/asynchronous_logger.hpp"
 #include "caf/detail/format.hpp"
 #include "caf/detail/log_level.hpp"
 #include "caf/detail/log_level_map.hpp"
@@ -429,6 +430,16 @@ public:
       do_print(field);
   }
 
+  /// Prints a message to the output stream if `verbosity() >= level`.
+  void println(unsigned level, std::string_view msg) override {
+    if (level_ < level) {
+      return;
+    }
+    set_live();
+    detail::format_to(colored(), "{0:{1}}${2}({3}): {4}\n", ' ', indent_,
+                      color_by_log_level(level), log_level_names_[level], msg);
+  }
+
   void print_actor_output(local_actor* self, std::string_view msg) override {
     if (level_ < log::level::info)
       return;
@@ -594,7 +605,8 @@ std::unique_ptr<reporter> reporter::make_default() {
 namespace {
 
 /// A logger implementation that delegates to the test reporter.
-class reporter_logger : public logger, public detail::atomic_ref_counted {
+class reporter_logger : public detail::asynchronous_logger,
+                        public detail::atomic_ref_counted {
 public:
   /// Increases the reference count of the coordinated.
   void ref_logger() const noexcept final {
@@ -642,21 +654,10 @@ public:
                                    });
   }
 
-  // -- initialization ---------------------------------------------------------
-
-  /// Allows the logger to read its configuration from the actor system config.
-  void init(const actor_system_config&) override {
-    // nop
-  }
-
-  // -- event handling ---------------------------------------------------------
-
-  /// Starts any background threads needed by the logger.
   void start() override {
     // nop
   }
 
-  /// Stops all background threads of the logger.
   void stop() override {
     // nop
   }
@@ -667,7 +668,7 @@ private:
 
 } // namespace
 
-intrusive_ptr<logger> reporter::make_logger() {
+intrusive_ptr<detail::asynchronous_logger> reporter::make_logger() {
   return make_counted<reporter_logger>();
 }
 

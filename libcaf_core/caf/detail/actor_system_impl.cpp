@@ -2,11 +2,12 @@
 // the main distribution directory for license terms and copyright or visit
 // https://github.com/actor-framework/actor-framework/blob/main/LICENSE.
 
-#pragma once
+#include "caf/detail/actor_system_impl.hpp"
 
 namespace caf::detail {
 
-// gitignore-style pathname globbing.
-bool glob_match(const char* str, const char* glob);
+actor_system_impl::~actor_system_impl() {
+  // nop
+}
 
 } // namespace caf::detail

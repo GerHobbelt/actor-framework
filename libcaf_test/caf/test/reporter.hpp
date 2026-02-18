@@ -6,6 +6,7 @@
 
 #include "caf/test/fwd.hpp"
 
+#include "caf/detail/asynchronous_logger.hpp"
 #include "caf/detail/log_level.hpp"
 #include "caf/detail/test_export.hpp"
 #include "caf/format_string_with_location.hpp"
@@ -74,6 +75,9 @@ public:
     = 0;
 
   /// Prints a message to the output stream if `verbosity() >= level`.
+  virtual void println(unsigned level, std::string_view msg) = 0;
+
+  /// Prints a message to the output stream if `verbosity() >= level`.
   virtual void print(const log::event& event) = 0;
 
   /// Prints a message to the output stream if `verbosity() >= level`.
@@ -122,7 +126,7 @@ public:
   static std::unique_ptr<reporter> make_default();
 
   /// Creates a logger that forwards events to the current reporter.
-  static intrusive_ptr<logger> make_logger();
+  static intrusive_ptr<detail::asynchronous_logger> make_logger();
 };
 
 } // namespace caf::test

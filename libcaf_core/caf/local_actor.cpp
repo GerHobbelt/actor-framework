@@ -9,7 +9,6 @@
 #include "caf/binary_deserializer.hpp"
 #include "caf/binary_serializer.hpp"
 #include "caf/default_attachable.hpp"
-#include "caf/detail/glob_match.hpp"
 #include "caf/disposable.hpp"
 #include "caf/exit_reason.hpp"
 #include "caf/log/core.hpp"
@@ -126,10 +125,6 @@ void local_actor::do_delegate_error() {
                                        make_error(sec::invalid_delegate)),
                   context());
   mid.mark_as_answered();
-}
-
-void local_actor::initialize() {
-  auto lg = log::core::trace("id = {}, name = {}", id(), name());
 }
 
 void local_actor::on_cleanup([[maybe_unused]] const error& reason) {

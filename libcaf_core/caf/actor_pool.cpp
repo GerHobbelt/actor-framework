@@ -81,7 +81,7 @@ actor_pool::~actor_pool() {
 }
 
 actor actor_pool::make(actor_system& sys, policy pol) {
-  actor_config cfg{&sys.scheduler()};
+  actor_config cfg{no_spawn_options, &sys.scheduler()};
   auto res = make_actor<actor_pool, actor>(sys.next_actor_id(), sys.node(),
                                            &sys, cfg);
   auto ptr = actor_cast<actor_pool*>(res);
@@ -192,10 +192,10 @@ bool actor_pool::filter(guard_type& guard, const strong_actor_ptr& sender,
     return true;
   }
   if (content.match_elements<sys_atom, get_atom>()) {
-    auto cpy = workers_;
+    auto copy = workers_;
     guard.unlock();
     sender->enqueue(
-      make_mailbox_element(nullptr, mid.response_id(), std::move(cpy)), sched);
+      make_mailbox_element(nullptr, mid.response_id(), std::move(copy)), sched);
     return true;
   }
   if (workers_.empty()) {

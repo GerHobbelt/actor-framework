@@ -82,6 +82,7 @@ caf_add_component(
     caf/actor_companion.cpp
     caf/actor_companion.test.cpp
     caf/actor_config.cpp
+    caf/actor_config.test.cpp
     caf/actor_control_block.cpp
     caf/actor_factory.test.cpp
     caf/actor_from_state.test.cpp
@@ -151,9 +152,12 @@ caf_add_component(
     caf/detail/abstract_worker.cpp
     caf/detail/abstract_worker_hub.cpp
     caf/detail/actor_system_access.cpp
-    caf/detail/actor_system_config_access.cpp
+    caf/detail/actor_system_impl.cpp
     caf/detail/aligned_alloc.cpp
     caf/detail/assert.cpp
+    caf/detail/asynchronous_actor_clock.cpp
+    caf/detail/asynchronous_actor_clock.test.cpp
+    caf/detail/asynchronous_logger.cpp
     caf/detail/atomic_ref_counted.cpp
     caf/detail/base64.cpp
     caf/detail/base64.test.cpp
@@ -177,7 +181,6 @@ caf_add_component(
     caf/detail/default_thread_count.cpp
     caf/detail/format.test.cpp
     caf/detail/get_process_id.cpp
-    caf/detail/glob_match.cpp
     caf/detail/ieee_754.test.cpp
     caf/detail/invoke_result_visitor.cpp
     caf/detail/json.cpp
@@ -186,6 +189,8 @@ caf_add_component(
     caf/detail/log_level_map.cpp
     caf/detail/log_level_map.test.cpp
     caf/detail/mailbox_factory.cpp
+    caf/detail/match_wildcard_pattern.cpp
+    caf/detail/match_wildcard_pattern.test.cpp
     caf/detail/mbr_list.test.cpp
     caf/detail/message_builder_element.cpp
     caf/detail/message_data.cpp
@@ -318,6 +323,7 @@ caf_add_component(
     caf/log/event.cpp
     caf/log/event.test.cpp
     caf/logger.cpp
+    caf/logger.test.cpp
     caf/mail_cache.cpp
     caf/mail_cache.test.cpp
     caf/mailbox_element.cpp
@@ -391,6 +397,7 @@ caf_add_component(
     caf/thread_hook.cpp
     caf/thread_hook.test.cpp
     caf/timestamp.cpp
+    caf/timestamp.test.cpp
     caf/type_id.cpp
     caf/type_id.test.cpp
     caf/type_id_list.cpp
