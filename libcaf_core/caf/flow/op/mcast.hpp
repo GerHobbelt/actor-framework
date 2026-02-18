@@ -51,10 +51,14 @@ public:
   }
 
 private:
-  void do_dispose(bool) override {
+  void do_dispose(bool from_external) override {
     if (state_) {
       auto state = std::move(state_);
-      state->dispose();
+      if (from_external) {
+        state->dispose();
+      } else {
+        state->cancel();
+      }
     }
   }
 
@@ -79,6 +83,11 @@ public:
 
   using observer_type = observer<T>;
 
+  // -- constants --------------------------------------------------------------
+
+  /// Whether the multicast operator can only hold a single value.
+  static constexpr bool single_value = false;
+
   // -- constructors, destructors, and assignment operators --------------------
 
   explicit mcast(coordinator* parent) : super(parent) {
@@ -94,13 +103,18 @@ public:
   /// Pushes @p item to all subscribers.
   /// @returns `true` if all observers consumed the item immediately without
   ///          buffering it, `false` otherwise.
-  bool push_all(const T& item) {
+  bool push(const T& item) {
     // Note: we can't use all_of here because we need to call push on all
     //      observers and the algorithm would short-circuit.
     return std::accumulate(states_.begin(), states_.end(), true,
                            [&item](bool res, const state_ptr_type& ptr) {
                              return res & ptr->push(item);
                            });
+  }
+
+  [[deprecated("use push instead")]]
+  bool push_all(const T& item) {
+    return push(item);
   }
 
   /// Closes the operator, eventually emitting on_complete on all observers.

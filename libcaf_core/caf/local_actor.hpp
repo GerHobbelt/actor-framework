@@ -7,6 +7,7 @@
 #include "caf/abstract_actor.hpp"
 #include "caf/actor.hpp"
 #include "caf/actor_cast.hpp"
+#include "caf/actor_clock.hpp"
 #include "caf/actor_config.hpp"
 #include "caf/actor_system.hpp"
 #include "caf/behavior.hpp"
@@ -178,6 +179,7 @@ public:
 
   template <message_priority Priority = message_priority::normal, class Handle,
             class T, class... Ts>
+  [[deprecated("use anon_mail instead")]]
   void anon_send(const Handle& receiver, T&& arg, Ts&&... args) {
     detail::send_type_check<none_t, Handle, T, Ts...>();
     do_anon_send(actor_cast<abstract_actor*>(receiver), Priority,
@@ -186,6 +188,7 @@ public:
 
   template <message_priority Priority = message_priority::normal, class Handle,
             class T, class... Ts>
+  [[deprecated("use anon_mail instead")]]
   disposable scheduled_anon_send(const Handle& receiver,
                                  actor_clock::time_point timeout, T&& arg,
                                  Ts&&... args) {
@@ -197,6 +200,7 @@ public:
 
   template <message_priority Priority = message_priority::normal, class Handle,
             class T, class... Ts>
+  [[deprecated("use anon_mail instead")]]
   disposable delayed_anon_send(const Handle& receiver,
                                actor_clock::duration_type timeout, T&& arg,
                                Ts&&... args) {
@@ -303,16 +307,6 @@ public:
 
   const char* name() const override;
 
-  /// Serializes the state of this actor to `sink`. This function is
-  /// only called if this actor has set the `is_serializable` flag.
-  /// The default implementation throws a `std::logic_error`.
-  virtual error save_state(serializer& sink, unsigned int version);
-
-  /// Deserializes the state of this actor from `source`. This function is
-  /// only called if this actor has set the `is_serializable` flag.
-  /// The default implementation throws a `std::logic_error`.
-  virtual error load_state(deserializer& source, unsigned int version);
-
   /// Returns the currently defined fail state. If this reason is not
   /// `none` then the actor will terminate with this error after executing
   /// the current message handler.
@@ -335,10 +329,9 @@ public:
 
   template <class ActorHandle>
   ActorHandle eval_opts(spawn_options opts, ActorHandle res) {
-    if (has_monitor_flag(opts))
-      do_monitor(actor_cast<abstract_actor*>(res), message_priority::normal);
-    if (has_link_flag(opts))
+    if (has_link_flag(opts)) {
       link_to(res->address());
+    }
     return res;
   }
 
@@ -361,17 +354,6 @@ public:
     }
     mid.mark_as_answered();
     return {result, std::move(current_element_->sender)};
-  }
-
-  template <message_priority P = message_priority::normal, class Handle = actor,
-            class... Ts>
-  [[deprecated("use the mail API instead")]]
-  typename response_type<
-    typename Handle::signatures,
-    detail::implicit_conversions_t<std::decay_t<Ts>>...>::delegated_type
-  delegate(const Handle& dest, Ts&&... xs) {
-    auto rp = make_response_promise();
-    return rp.template delegate<P>(dest, std::forward<Ts>(xs)...);
   }
 
   virtual void initialize();

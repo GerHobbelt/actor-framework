@@ -84,6 +84,7 @@ caf_add_component(
     caf/actor_control_block.cpp
     caf/actor_factory.test.cpp
     caf/actor_from_state.test.cpp
+    caf/actor_launcher.cpp
     caf/actor_pool.cpp
     caf/actor_pool.test.cpp
     caf/actor_proxy.cpp
@@ -104,6 +105,8 @@ caf_add_component(
     caf/async/consumer_adapter.test.cpp
     caf/async/execution_context.cpp
     caf/async/file.test.cpp
+    caf/async/mock_consumer.test.cpp
+    caf/async/mock_producer.test.cpp
     caf/async/producer.cpp
     caf/async/producer_adapter.test.cpp
     caf/async/promise.test.cpp
@@ -162,6 +165,8 @@ caf_add_component(
     caf/detail/cleanup_and_release.cpp
     caf/detail/config_consumer.cpp
     caf/detail/config_consumer.test.cpp
+    caf/detail/counted_disposable.cpp
+    caf/detail/counted_disposable.test.cpp
     caf/detail/critical.cpp
     caf/detail/daemons.cpp
     caf/detail/default_mailbox.cpp
@@ -238,8 +243,9 @@ caf_add_component(
     caf/flow/observable.test.cpp
     caf/flow/observable_builder.cpp
     caf/flow/observe_on.test.cpp
+    caf/flow/op/auto_connect.test.cpp
     caf/flow/op/buffer.test.cpp
-    caf/flow/op/on_error_resume_next.test.cpp
+    caf/flow/op/cache.test.cpp
     caf/flow/op/cell.test.cpp
     caf/flow/op/concat.test.cpp
     caf/flow/op/debounce.test.cpp
@@ -252,9 +258,11 @@ caf_add_component(
     caf/flow/op/merge.test.cpp
     caf/flow/op/never.test.cpp
     caf/flow/op/on_backpressure_buffer.test.cpp
+    caf/flow/op/on_error_resume_next.test.cpp
     caf/flow/op/prefix_and_tail.test.cpp
     caf/flow/op/publish.test.cpp
     caf/flow/op/pullable.cpp
+    caf/flow/op/ref_count.test.cpp
     caf/flow/op/retry.test.cpp
     caf/flow/op/sample.test.cpp
     caf/flow/op/throttle_first.test.cpp
@@ -268,7 +276,6 @@ caf_add_component(
     caf/flow/string.test.cpp
     caf/flow/subscription.cpp
     caf/forwarding_actor_proxy.cpp
-    caf/function_view.test.cpp
     caf/handles.test.cpp
     caf/hash/fnv.test.cpp
     caf/hash/sha1.cpp
@@ -324,7 +331,6 @@ caf_add_component(
     caf/meta/handler.cpp
     caf/meta/handler.test.cpp
     caf/metaprogramming.test.cpp
-    caf/mixin/requester.test.cpp
     caf/monitor.test.cpp
     caf/mtl.test.cpp
     caf/node_id.cpp
@@ -333,13 +339,10 @@ caf_add_component(
     caf/or_else.test.cpp
     caf/parser_state.cpp
     caf/pec.test.cpp
-    caf/policy/select_all.test.cpp
-    caf/policy/select_any.test.cpp
     caf/proxy_registry.cpp
     caf/raise_error.cpp
     caf/ref_counted.cpp
     caf/request_timeout.test.cpp
-    caf/response_handle.test.cpp
     caf/response_promise.cpp
     caf/response_promise.test.cpp
     caf/result.test.cpp

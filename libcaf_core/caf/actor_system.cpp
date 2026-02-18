@@ -683,7 +683,7 @@ public:
           ptr->stop();
         }
       }
-      CAF_LOG_DEBUG("stop scheduler");
+      log::core::debug("stop scheduler");
       scheduler->stop();
       private_threads.stop();
       registry.stop();
@@ -964,6 +964,23 @@ void actor_system::thread_started(thread_owner owner) {
 void actor_system::thread_terminates() {
   for (auto& hook : impl_->cfg->thread_hooks())
     hook->thread_terminates();
+}
+
+std::pair<event_based_actor*, actor_launcher>
+actor_system::spawn_inactive_impl(spawn_options options) {
+  using actor_type = event_based_actor;
+  CAF_SET_LOGGER_SYS(this);
+  actor_config cfg{&scheduler(), nullptr};
+  cfg.flags = abstract_actor::is_inactive_flag;
+  if (has_detach_flag(options))
+    cfg.flags |= abstract_actor::is_detached_flag;
+  if (has_hide_flag(options))
+    cfg.flags |= abstract_actor::is_hidden_flag;
+  cfg.mbox_factory = mailbox_factory();
+  auto res = make_actor<actor_type>(next_actor_id(), node(), this, cfg);
+  auto* ptr = actor_cast<actor_type*>(res);
+  return {ptr, actor_launcher{actor_cast<strong_actor_ptr>(std::move(res)),
+                              &scheduler(), options}};
 }
 
 expected<strong_actor_ptr>

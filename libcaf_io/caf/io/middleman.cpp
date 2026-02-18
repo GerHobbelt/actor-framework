@@ -20,7 +20,6 @@
 #include "caf/detail/latch.hpp"
 #include "caf/detail/prometheus_broker.hpp"
 #include "caf/format_to_error.hpp"
-#include "caf/function_view.hpp"
 #include "caf/init_global_meta_objects.hpp"
 #include "caf/log/system.hpp"
 #include "caf/logger.hpp"
@@ -30,6 +29,7 @@
 #include "caf/send.hpp"
 #include "caf/telemetry/metric_registry.hpp"
 #include "caf/thread_owner.hpp"
+#include "caf/version.hpp"
 
 #include <cstring>
 #include <memory>
@@ -217,9 +217,7 @@ actor_system_module* middleman::make(actor_system& sys) {
 }
 
 void middleman::check_abi_compatibility(version::abi_token token) {
-  if (static_cast<int>(token) != CAF_VERSION_MAJOR) {
-    CAF_CRITICAL("CAF ABI token mismatch");
-  }
+  version::check_abi_compatibility(token);
 }
 
 middleman::middleman(actor_system& sys) : system_(sys) {

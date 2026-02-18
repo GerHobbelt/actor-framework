@@ -60,6 +60,7 @@ option(CAF_ENABLE_QT6_EXAMPLES "Build examples with the Qt6 framework" OFF)
 option(CAF_ENABLE_ROBOT_TESTS "Add the Robot tests to CTest " OFF)
 option(CAF_ENABLE_RUNTIME_CHECKS "Build CAF with extra runtime assertions" OFF)
 option(CAF_USE_STD_FORMAT "Enable std::format support" OFF)
+option(CAF_ENABLE_TRACE_LOGGING "Enable additional logging for debugging" OFF)
 
 # -- CAF options that are on by default ----------------------------------------
 
@@ -77,7 +78,6 @@ cmake_dependent_option(CAF_ENABLE_OPENSSL_MODULE "Build OpenSSL module" ON
 # -- CAF options with non-boolean values ---------------------------------------
 
 set(CAF_CXX_VERSION 20 CACHE STRING "Set the C++ version to use for CAF")
-set(CAF_LOG_LEVEL "QUIET" CACHE STRING "Set log verbosity of CAF components")
 set(CAF_EXCLUDE_TESTS "" CACHE STRING "List of excluded test suites")
 set(CAF_SANITIZERS "" CACHE STRING
     "Comma separated sanitizers, e.g., 'address,undefined'")
@@ -98,11 +98,6 @@ set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 if(CAF_ENABLE_OPENSSL_MODULE AND NOT CAF_ENABLE_IO_MODULE)
   message(FATAL_ERROR "Invalid options: cannot build OpenSSL without I/O")
-endif()
-
-set(CAF_VALID_LOG_LEVELS QUIET ERROR WARNING INFO DEBUG TRACE)
-if(NOT CAF_LOG_LEVEL IN_LIST CAF_VALID_LOG_LEVELS)
-  message(FATAL_ERROR "Invalid log level: \"${CAF_LOG_LEVEL}\"")
 endif()
 
 if(MSVC AND CAF_SANITIZERS)
@@ -216,6 +211,7 @@ function(caf_export_and_install_lib component)
           DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
           COMPONENT ${component}
           FILES_MATCHING PATTERN "*.hpp"
+          PATTERN "*.test.hpp" EXCLUDE
           PATTERN "*/internal/*" EXCLUDE)
   install(FILES "${CMAKE_CURRENT_BINARY_DIR}/caf/detail/${component}_export.hpp"
           DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/caf/detail/")
@@ -288,6 +284,7 @@ function(caf_add_component name)
   endif()
   foreach(source_file ${CAF_ADD_COMPONENT_SOURCES})
     get_filename_component(ext ${source_file} EXT)
+    get_filename_component(source_file_name ${source_file} NAME)
     if(ext STREQUAL ".cpp")
       target_sources(${lib_target} PRIVATE ${source_file})
     elseif(ext STREQUAL ".test.cpp" AND CAF_ENABLE_TESTING)
@@ -295,10 +292,12 @@ function(caf_add_component name)
       get_filename_component(test_path ${source_file} DIRECTORY)
       string(REPLACE "/" "." test_name "${test_path}/${test_name}")
       target_sources("caf-${name}-test" PRIVATE ${source_file})
-      set_property(SOURCE ${source_file} PROPERTY COMPILE_DEFINITIONS
-                   CAF_TEST_SUITE_NAME=${test_name})
-      add_test(NAME ${test_name} COMMAND "caf-${name}-test" -s "^${test_name}$" -n -v5)
-      set_tests_properties(${test_name} PROPERTIES TIMEOUT 300)
+      if(NOT source_file_name MATCHES "^mock_")
+        set_property(SOURCE ${source_file} PROPERTY COMPILE_DEFINITIONS
+                     CAF_TEST_SUITE_NAME=${test_name})
+        add_test(NAME ${test_name} COMMAND "caf-${name}-test" -s "^${test_name}$" -n -v5)
+        set_tests_properties(${test_name} PROPERTIES TIMEOUT 300)
+      endif()
       if (MSVC)
         set_source_files_properties(${source_file} PROPERTIES
                                     COMPILE_FLAGS /wd4996)
