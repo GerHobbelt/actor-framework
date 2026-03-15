@@ -10,6 +10,7 @@
 #include "caf/anon_mail.hpp"
 #include "caf/config.hpp"
 #include "caf/defaults.hpp"
+#include "caf/detail/actor_system_access.hpp"
 #include "caf/detail/assert.hpp"
 #include "caf/detail/critical.hpp"
 #include "caf/detail/current_actor.hpp"
@@ -126,7 +127,7 @@ scheduled_actor::batch_forwarder::~batch_forwarder() {
 }
 
 scheduled_actor::scheduled_actor(actor_config& cfg)
-  : super(cfg),
+  : super(cfg.add_flag(is_scheduled_actor_flag)),
     default_handler_(print_and_drop),
     error_handler_(default_error_handler),
     down_handler_(default_down_handler),
@@ -200,7 +201,7 @@ bool scheduled_actor::enqueue(mailbox_element_ptr ptr, scheduler* sched) {
       return true;
     default: { // intrusive::inbox_result::queue_closed
       CAF_LOG_REJECT_EVENT();
-      home_system().message_rejected(this);
+      detail::actor_system_access{home_system()}.message_rejected(this);
       if (auto* mailbox_size = metrics_.mailbox_size) {
         mailbox_size->dec();
       }
@@ -278,9 +279,13 @@ void scheduled_actor::on_cleanup(const error& reason) {
   awaited_responses_.clear();
   multiplexed_responses_.clear();
   cancel_flows_and_streams();
-  close_mailbox(reason);
+  close_mailbox();
   // Dispatch to parent's `on_cleanup` function.
   super::on_cleanup(reason);
+}
+
+resumable* scheduled_actor::as_resumable() noexcept {
+  return this;
 }
 
 // -- overridden functions of resumable ----------------------------------------
@@ -1213,7 +1218,7 @@ void scheduled_actor::cancel_flows_and_streams() {
   run_actions();
 }
 
-void scheduled_actor::close_mailbox(const error& reason) {
+void scheduled_actor::close_mailbox() {
   // Discard stashed messages.
   auto dropped = size_t{0};
   if (!stash_.empty()) {
@@ -1226,13 +1231,13 @@ void scheduled_actor::close_mailbox(const error& reason) {
   }
   // Clear mailbox.
   if (!mailbox().closed())
-    dropped += mailbox().close(reason);
+    dropped += mailbox().close();
   if (dropped > 0 && metrics_.mailbox_size)
     metrics_.mailbox_size->dec(static_cast<int64_t>(dropped));
 }
 
 void scheduled_actor::force_close_mailbox() {
-  close_mailbox(make_error(exit_reason::unreachable));
+  close_mailbox();
 }
 
 // -- monitoring ---------------------------------------------------------------

@@ -9,6 +9,7 @@
 #include "caf/binary_deserializer.hpp"
 #include "caf/binary_serializer.hpp"
 #include "caf/default_attachable.hpp"
+#include "caf/detail/actor_system_access.hpp"
 #include "caf/disposable.hpp"
 #include "caf/exit_reason.hpp"
 #include "caf/log/core.hpp"
@@ -29,7 +30,7 @@
 namespace caf {
 
 local_actor::local_actor(actor_config& cfg)
-  : abstract_actor(cfg),
+  : abstract_actor(cfg.add_flag(is_local_actor_flag)),
     context_(cfg.sched),
     current_element_(nullptr),
     initial_behavior_fac_(std::move(cfg.init_fun)) {
@@ -146,7 +147,7 @@ void local_actor::do_anon_send(abstract_actor* receiver,
                       context());
     return;
   }
-  system().message_rejected(nullptr);
+  detail::actor_system_access{system()}.message_rejected(nullptr);
 }
 
 disposable local_actor::do_scheduled_anon_send(strong_actor_ptr receiver,
@@ -158,8 +159,14 @@ disposable local_actor::do_scheduled_anon_send(strong_actor_ptr receiver,
       timeout, receiver,
       make_mailbox_element(nullptr, make_message_id(priority), std::move(msg)));
   }
-  system().message_rejected(nullptr);
+  detail::actor_system_access{system()}.message_rejected(nullptr);
   return {};
+}
+
+// -- miscellaneous ------------------------------------------------------------
+
+resumable* local_actor::as_resumable() noexcept {
+  return nullptr;
 }
 
 } // namespace caf

@@ -215,6 +215,8 @@ public:
 
   void on_cleanup(const error& reason) override;
 
+  resumable* as_resumable() noexcept override;
+
   // -- overridden functions of resumable --------------------------------------
 
   void ref_resumable() const noexcept final;
@@ -802,7 +804,7 @@ private:
 
   // -- cleanup ----------------------------------------------------------------
 
-  void close_mailbox(const error& reason);
+  void close_mailbox();
 
   void force_close_mailbox() final;
 

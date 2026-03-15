@@ -13,9 +13,9 @@
 #include "caf/binary_serializer.hpp"
 #include "caf/detail/concepts.hpp"
 #include "caf/detail/test_export.hpp"
+#include "caf/local_actor.hpp"
 #include "caf/mailbox_element.hpp"
 #include "caf/resumable.hpp"
-#include "caf/scheduled_actor.hpp"
 
 #include <list>
 #include <memory>
@@ -257,6 +257,7 @@ public:
 
     /// Sets the target actor for this evaluator and evaluate the predicate.
     template <class T>
+      requires(!std::is_same_v<T, scoped_actor>)
     bool to(const T& dst) && {
       auto dst_ptr = actor_cast<strong_actor_ptr>(dst);
       switch (algo_) {
@@ -447,7 +448,7 @@ public:
   size_t mail_count();
 
   /// Returns the number of pending messages for `receiver`.
-  size_t mail_count(scheduled_actor* receiver);
+  size_t mail_count(local_actor* receiver);
 
   /// Returns the number of pending messages for `receiver`.
   size_t mail_count(const strong_actor_ptr& receiver);
@@ -650,10 +651,10 @@ public:
       return;
     }
     auto* base_ptr = actor_cast<abstract_actor*>(hdl);
-    auto* ptr = dynamic_cast<scheduled_actor*>(base_ptr);
-    if (ptr == nullptr) {
+    if (!base_ptr->is_local_actor()) {
       return;
     }
+    auto* ptr = static_cast<local_actor*>(base_ptr)->as_resumable();
     for (auto& event : *events_) {
       if (event->target == ptr && event->item) {
         fn(event->item->payload);

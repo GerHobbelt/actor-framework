@@ -9,20 +9,25 @@
 
 namespace caf::detail {
 
+class actor_system_impl;
 class daemons;
 
-/// Utility to override internal components of an actor system.
+/// Utility to access private APIs of an actor system.
 class CAF_CORE_EXPORT actor_system_access {
 public:
   explicit actor_system_access(actor_system& sys) : sys_(&sys) {
     // nop
   }
 
+  actor_system_impl* impl() noexcept;
+
   void node(node_id id);
 
   detail::mailbox_factory* mailbox_factory();
 
   detail::daemons* daemons();
+
+  void message_rejected(abstract_actor* ptr);
 
 private:
   actor_system* sys_;

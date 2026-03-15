@@ -87,6 +87,9 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 - The `operator bool` on `caf::error_code` is now deprecated. Use `.empty()` or
   `.valid()` instead to determine whether an error code was default-constructed
   or holds a non-zero value (#2211).
+- The method `actor_system::redirect_text_output` is now deprecated. Configure a
+  console printer instead via `actor_system_config::console_printer_factory()`
+  before constructing the actor system.
 
 ### Added
 
@@ -127,6 +130,10 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   cleanup of disposed jobs from the actor clock. By setting this option, users
   can reduce the memory usage of the actor clock when the application frequently
   schedules actions with long delays that usually get disposed before they run.
+- Users can now set the new config parameter `caf.logger.console.stream` to
+  `system` to have the console logger use `actor_system::println` instead of
+  writing to `stderr`. This avoids mangled output on the console when enabling
+  console logging while also printing from actors.
 
 ### Fixed
 

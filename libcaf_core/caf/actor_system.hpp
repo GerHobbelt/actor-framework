@@ -11,6 +11,7 @@
 #include "caf/actor_system_module.hpp"
 #include "caf/caf_deprecated.hpp"
 #include "caf/callback.hpp"
+#include "caf/console_printer.hpp"
 #include "caf/detail/actor_system_impl.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/detail/format.hpp"
@@ -104,11 +105,7 @@ public:
   friend class actor_pool;
   friend class blocking_actor;
   friend class detail::actor_system_access;
-  friend class detail::response_promise_state;
   friend class local_actor;
-  friend class net::abstract_actor_shell;
-  friend class net::middleman;
-  friend class scheduled_actor;
 
   template <class>
   friend class actor_from_state_t;
@@ -174,7 +171,7 @@ public:
   explicit actor_system(actor_system_config& cfg,
                         version::abi_token = make_abi_token());
 
-  virtual ~actor_system();
+  ~actor_system();
 
   /// A message passing interface (MPI) in run-time checkable representation.
   using mpi = std::set<std::string>;
@@ -428,11 +425,7 @@ public:
     println(term::reset, fmt, std::forward<Args>(args)...);
   }
 
-  /// Redirects the output of `println` to a custom function.
-  /// @param out The new output stream to write to.
-  /// @param write The new print function to use. Must not be null.
-  /// @param cleanup Deletes the output stream when the actor system shuts down.
-  ///                May be null if no cleanup is necessary.
+  CAF_DEPRECATED("configure a factory for the printer instead")
   void redirect_text_output(void* out,
                             void (*write)(void*, term, const char*, size_t),
                             void (*cleanup)(void*));
@@ -536,8 +529,6 @@ private:
   expected<strong_actor_ptr>
   dyn_spawn_impl(const std::string& name, message& args, caf::scheduler* ctx,
                  bool check_interface, const mpi* expected_ifs);
-
-  void message_rejected(abstract_actor* receiver);
 
   detail::mailbox_factory* mailbox_factory();
 

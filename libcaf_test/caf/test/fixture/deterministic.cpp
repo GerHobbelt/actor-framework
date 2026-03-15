@@ -11,18 +11,18 @@
 #include "caf/actor_system.hpp"
 #include "caf/actor_system_config.hpp"
 #include "caf/actor_system_module.hpp"
+#include "caf/console_printer.hpp"
 #include "caf/detail/actor_system_config_access.hpp"
 #include "caf/detail/actor_system_impl.hpp"
 #include "caf/detail/assert.hpp"
 #include "caf/detail/critical.hpp"
 #include "caf/detail/daemons.hpp"
+#include "caf/detail/default_mailbox.hpp"
 #include "caf/detail/mailbox_factory.hpp"
 #include "caf/detail/meta_object.hpp"
-#include "caf/detail/panic.hpp"
 #include "caf/detail/print.hpp"
 #include "caf/detail/private_thread_pool.hpp"
 #include "caf/detail/sync_request_bouncer.hpp"
-#include "caf/detail/test_export.hpp"
 #include "caf/log/test.hpp"
 #include "caf/logger.hpp"
 #include "caf/mailbox_element.hpp"
@@ -30,7 +30,6 @@
 #include "caf/scheduler.hpp"
 #include "caf/telemetry/actor_metrics.hpp"
 #include "caf/telemetry/metric_registry.hpp"
-#include "caf/version.hpp"
 
 #include <algorithm>
 #include <array>
@@ -40,7 +39,6 @@
 #include <memory>
 #include <mutex>
 #include <numeric>
-#include <shared_mutex>
 #include <source_location>
 #include <string>
 #include <string_view>
@@ -64,23 +62,34 @@ size_t mail_count(const deterministic::events_list& events) {
 }
 
 size_t mail_count(const deterministic::events_list& events,
-                  scheduled_actor* receiver) {
+                  local_actor* receiver) {
   if (receiver == nullptr)
     return 0;
-  auto pred = [&](const auto& event) { return event->target == receiver; };
+  auto pred = [&](const auto& event) {
+    return event->target == receiver->as_resumable();
+  };
   return std::ranges::count_if(events, pred);
 }
 
 size_t mail_count(const deterministic::events_list& events,
                   const strong_actor_ptr& receiver) {
-  auto raw_ptr = actor_cast<abstract_actor*>(receiver);
-  return mail_count(events, dynamic_cast<scheduled_actor*>(raw_ptr));
+  if (!receiver) {
+    return 0;
+  }
+  auto* raw_ptr = actor_cast<abstract_actor*>(receiver);
+  if (!raw_ptr->is_local_actor()) {
+    CAF_RAISE_ERROR(std::invalid_argument,
+                    "mail_count: receiver is not a local actor");
+  }
+  return mail_count(events, static_cast<local_actor*>(raw_ptr));
 }
 
 /// Removes the next message for `receiver` from the queue and returns it.
 mailbox_element_ptr next_msg(deterministic::events_list& events,
-                             scheduled_actor* receiver) {
-  auto pred = [&](const auto& event) { return event->target == receiver; };
+                             local_actor* receiver) {
+  auto pred = [&](const auto& event) {
+    return event->target == receiver->as_resumable();
+  };
   auto first = events.begin();
   auto last = events.end();
   auto i = std::find_if(first, last, pred);
@@ -105,8 +114,12 @@ void drop_events(deterministic::events_list& events) {
 class deterministic_mailbox final : public ref_counted,
                                     public abstract_mailbox {
 public:
-  deterministic_mailbox(events_list_ptr events, scheduled_actor* owner)
+  deterministic_mailbox(events_list_ptr events, local_actor* owner)
     : events_(std::move(events)), owner_(owner) {
+    if (owner->getf(local_actor::is_blocking_flag)) {
+      detail::critical("deterministic_mailbox cannot be used "
+                       "with blocking actors");
+    }
   }
 
   intrusive::inbox_result push_back(mailbox_element_ptr ptr) override {
@@ -115,17 +128,21 @@ public:
       bouncer(*ptr);
       return intrusive::inbox_result::queue_closed;
     }
+    // Note: returning unblocked_reader would cause the actor to call
+    //       `schedule`. Hence, we always return success here to make sure the
+    //       actor never touches the scheduler.
     using event_t = deterministic::scheduling_event;
-    auto unblocked = mail_count(*events_, owner_) == 0;
-    auto event = std::make_unique<event_t>(owner_, std::move(ptr));
+    auto event = std::make_unique<event_t>(owner_->as_resumable(),
+                                           std::move(ptr));
     events_->push_back(std::move(event));
-    return unblocked ? intrusive::inbox_result::unblocked_reader
-                     : intrusive::inbox_result::success;
+    blocked_ = false;
+    return intrusive::inbox_result::success;
   }
 
   void push_front(mailbox_element_ptr ptr) override {
     using event_t = deterministic::scheduling_event;
-    auto event = std::make_unique<event_t>(owner_, std::move(ptr));
+    auto event = std::make_unique<event_t>(owner_->as_resumable(),
+                                           std::move(ptr));
     events_->emplace_front(std::move(event));
   }
 
@@ -153,9 +170,8 @@ public:
     return true;
   }
 
-  size_t close(const error& reason) override {
+  size_t close() override {
     closed_ = true;
-    close_reason_ = reason;
     auto result = size_t{0};
     auto bounce = detail::sync_request_bouncer{};
     auto envelope = next_msg(*events_, owner_);
@@ -171,20 +187,19 @@ public:
     return mail_count(*events_, owner_);
   }
 
-  void ref_mailbox() noexcept override {
+  void ref_mailbox() const noexcept override {
     ref();
   }
 
-  void deref_mailbox() noexcept override {
+  void deref_mailbox() const noexcept override {
     deref();
   }
 
 private:
   bool blocked_ = false;
   bool closed_ = false;
-  error close_reason_;
   deterministic::events_list_ptr events_;
-  scheduled_actor* owner_;
+  local_actor* owner_;
 };
 
 class deterministic_mailbox_factory final : public detail::mailbox_factory {
@@ -194,12 +209,17 @@ public:
     // nop
   }
 
-  abstract_mailbox* make(scheduled_actor* owner) override {
+  abstract_mailbox* make(local_actor* owner) override {
+    if (owner->is_scoped_actor_impl()) {
+      // Scoped actors are the only supported blocking actor type in
+      // deterministic test mode and they use the default mailbox.
+      return new detail::default_mailbox;
+    }
+    if (owner->as_resumable() == nullptr) {
+      detail::critical("deterministic_mailbox_factory: "
+                       "actor does not implement the resumable interface");
+    }
     return new deterministic_mailbox(events_, owner);
-  }
-
-  abstract_mailbox* make(blocking_actor*) override {
-    return nullptr;
   }
 
 private:
@@ -268,21 +288,6 @@ private:
 
   std::unordered_map<actor_id, strong_actor_ptr> entries_;
   name_map named_entries_;
-};
-
-class test_print_state {
-public:
-  using print_fun = void (*)(void*, term, const char*, size_t);
-  using cleanup = void (*)(void*);
-
-  void reset(void*, print_fun, cleanup) {
-    // nop
-  }
-
-  void print(term, const char* buf, size_t buf_size) {
-    reporter::instance().println(log::level::info,
-                                 std::string_view{buf, buf_size});
-  }
 };
 
 class deterministic_actor_clock final : public actor_clock {
@@ -470,19 +475,16 @@ public:
     // nop
   }
 
-  void schedule(resumable* ptr, uint64_t event_id) override {
+  void schedule(resumable* ptr, uint64_t) override {
     using event_t = deterministic::scheduling_event;
-    // Actors put their messages into events_ directly when calling `push_back`
-    // on the mailbox. We simply ignore the delay/schedule calls from actors
-    // here except for initialization events (which we simply inline here).
-    if (auto* self = dynamic_cast<scheduled_actor*>(ptr)) {
-      if (event_id == resumable::initialization_event_id) {
-        self->activate(this);
-      }
-    } else {
-      // "Regular" resumables still need to be scheduled here.
-      events_->push_back(std::make_unique<event_t>(ptr, nullptr));
+    if (dynamic_cast<local_actor*>(ptr) != nullptr) {
+      // Actors put their messages into events_ directly and may not touch the
+      // scheduler in deterministic test mode.
+      detail::critical("actors may not be scheduled "
+                       "in deterministic test mode");
     }
+    // "Regular" resumables still need to be scheduled here.
+    events_->push_back(std::make_unique<event_t>(ptr, nullptr));
     // Before calling this function, CAF *always* bumps the reference count.
     // Hence, we need to release one reference count here.
     intrusive_ptr_release(ptr);
@@ -531,7 +533,6 @@ public:
       if (mod)
         mod->init(*cfg_);
     registry_.start();
-    private_threads_.start(owner);
     for (auto& mod : modules_)
       if (mod)
         mod->start();
@@ -547,7 +548,6 @@ public:
     }
     if (scheduler_)
       scheduler_->stop();
-    private_threads_.stop();
     registry_.stop();
     clock_ = nullptr;
     CAF_SET_LOGGER_SYS(nullptr);
@@ -613,7 +613,7 @@ public:
   }
 
   size_t detached_actors() const noexcept override {
-    return private_threads_.running();
+    return 0;
   }
 
   bool await_actors_before_shutdown() const override {
@@ -665,25 +665,30 @@ public:
   }
 
   detail::private_thread* acquire_private_thread() override {
-    return private_threads_.acquire();
+    detail::critical("private threads are not supported "
+                     "in deterministic test mode");
   }
 
-  void release_private_thread(detail::private_thread* ptr) override {
-    private_threads_.release(ptr);
+  void release_private_thread(detail::private_thread*) override {
+    detail::critical("private threads are not supported "
+                     "in deterministic test mode");
   }
 
   detail::mailbox_factory* mailbox_factory() override {
     return &mailbox_factory_;
   }
 
-  void redirect_text_output(void* out,
-                            void (*write)(void*, term, const char*, size_t),
-                            void (*cleanup)(void*)) override {
-    print_state_.reset(out, write, cleanup);
+  void redirect_text_output(std::unique_ptr<console_printer> ptr) override {
+    printer_ = std::move(ptr);
   }
 
   void do_print(term color, const char* buf, size_t num_bytes) override {
-    print_state_.print(color, buf, num_bytes);
+    if (printer_) {
+      printer_->print(color, buf, num_bytes);
+    } else {
+      reporter::instance().println(log::level::info,
+                                   std::string_view{buf, num_bytes});
+    }
   }
 
   void set_node(node_id id) override {
@@ -707,8 +712,8 @@ public:
     // which are blocking but not detached.
     if (has_detach_flag(options)
         && has_spawn_option(options, spawn_options::blocking_flag)) {
-      detail::panic("blocking actors are not supported "
-                    "in deterministic test mode");
+      detail::critical("blocking actors are not supported "
+                       "in deterministic test mode");
     }
     // In the deterministic test mode, we never call launch and initialize
     // actors inline instead.
@@ -734,8 +739,7 @@ private:
     modules_;
   bool await_actors_before_shutdown_ = true;
   detail::global_meta_objects_guard_type meta_objects_guard_;
-  detail::private_thread_pool private_threads_;
-  test_print_state print_state_;
+  std::unique_ptr<console_printer> printer_;
 };
 
 } // namespace
@@ -766,7 +770,7 @@ deterministic::deterministic()
 
 deterministic::deterministic(events_list_ptr events)
   : sys(make_deterministic_actor_system(cfg, events)), events_(events) {
-  // nop
+  caf::test::runnable::current().current_metric_registry(&sys.metrics());
 }
 
 deterministic::~deterministic() {
@@ -792,14 +796,23 @@ bool deterministic::prepone_event_impl(
   abstract_message_predicate& payload_pred) {
   if (events_->empty() || !receiver)
     return false;
+  auto* raw_ptr = actor_cast<abstract_actor*>(receiver);
+  if (!raw_ptr->is_local_actor()) {
+    CAF_RAISE_ERROR(std::invalid_argument,
+                    "prepone_event_impl: receiver is not a local actor");
+  }
+  auto* target = static_cast<local_actor*>(raw_ptr)->as_resumable();
+  if (target == nullptr) {
+    CAF_RAISE_ERROR(std::invalid_argument,
+                    "prepone_event_impl: receiver is not a resumable");
+  }
   auto first = events_->begin();
   auto last = events_->end();
-  auto i = std::find_if(first, last, [&](const auto& event) {
-    auto self = actor_cast<abstract_actor*>(receiver);
-    return event->target == dynamic_cast<scheduled_actor*>(self)
-           && sender_pred(event->item->sender)
+  auto pred = [target, &sender_pred, &payload_pred](const auto& event) {
+    return event->target == target && sender_pred(event->item->sender)
            && payload_pred(event->item->payload);
-  });
+  };
+  auto i = std::find_if(first, last, pred);
   if (i == last)
     return false;
   if (i != first) {
@@ -812,15 +825,24 @@ bool deterministic::prepone_event_impl(
 
 deterministic::scheduling_event*
 deterministic::find_event_impl(const strong_actor_ptr& receiver) {
-  if (events_->empty() || !receiver)
+  if (events_->empty() || !receiver) {
     return nullptr;
+  }
+  auto* raw_ptr = actor_cast<abstract_actor*>(receiver);
+  if (!raw_ptr->is_local_actor()) {
+    return nullptr;
+  }
+  auto* target = static_cast<local_actor*>(raw_ptr)->as_resumable();
+  if (target == nullptr) {
+    return nullptr;
+  }
   auto last = events_->end();
-  auto i = std::find_if(events_->begin(), last, [&](const auto& event) {
-    auto raw_ptr = actor_cast<abstract_actor*>(receiver);
-    return event->target == dynamic_cast<scheduled_actor*>(raw_ptr);
+  auto i = std::find_if(events_->begin(), last, [target](const auto& event) {
+    return event->target == target;
   });
-  if (i != last)
+  if (i != last) {
     return i->get();
+  }
   return nullptr;
 }
 
@@ -830,7 +852,7 @@ size_t deterministic::mail_count() {
   return fixture::mail_count(*events_);
 }
 
-size_t deterministic::mail_count(scheduled_actor* receiver) {
+size_t deterministic::mail_count(local_actor* receiver) {
   return fixture::mail_count(*events_, receiver);
 }
 
@@ -841,12 +863,15 @@ size_t deterministic::mail_count(const strong_actor_ptr& receiver) {
 // -- control flow -------------------------------------------------------------
 
 bool deterministic::terminated(const strong_actor_ptr& hdl) {
-  auto base_ptr = actor_cast<abstract_actor*>(hdl);
-  auto derived_ptr = dynamic_cast<scheduled_actor*>(base_ptr);
-  if (derived_ptr == nullptr)
+  if (!hdl) {
+    CAF_RAISE_ERROR(std::invalid_argument, "terminated: handle is null");
+  }
+  auto* raw_ptr = actor_cast<abstract_actor*>(hdl);
+  if (!raw_ptr->is_local_actor()) {
     CAF_RAISE_ERROR(std::invalid_argument,
-                    "terminated: actor is not a scheduled actor");
-  return derived_ptr->mailbox().closed();
+                    "terminated: handle is not a local actor");
+  }
+  return raw_ptr->getf(abstract_actor::is_terminated_flag);
 }
 
 bool deterministic::dispatch_message() {

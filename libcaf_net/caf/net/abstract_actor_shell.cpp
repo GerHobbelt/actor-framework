@@ -9,6 +9,7 @@
 
 #include "caf/action.hpp"
 #include "caf/callback.hpp"
+#include "caf/detail/actor_system_access.hpp"
 #include "caf/detail/assert.hpp"
 #include "caf/detail/default_invoke_result_visitor.hpp"
 #include "caf/detail/sync_request_bouncer.hpp"
@@ -129,7 +130,6 @@ bool abstract_actor_shell::enqueue(mailbox_element_ptr ptr, scheduler*) {
   CAF_LOG_SEND_EVENT(ptr);
   auto mid = ptr->mid;
   auto sender = ptr->sender;
-  auto collects_metrics = getf(abstract_actor::collects_metrics_flag);
   if (auto* mailbox_size = metrics_.mailbox_size) {
     ptr->set_enqueue_time();
     mailbox_size->inc();
@@ -152,7 +152,7 @@ bool abstract_actor_shell::enqueue(mailbox_element_ptr ptr, scheduler*) {
       return true;
     default: { // intrusive::inbox_result::queue_closed
       CAF_LOG_REJECT_EVENT();
-      home_system().message_rejected(this);
+      detail::actor_system_access{home_system()}.message_rejected(this);
       if (auto* mailbox_size = metrics_.mailbox_size) {
         mailbox_size->dec();
       }
@@ -182,7 +182,7 @@ void abstract_actor_shell::launch(caf::detail::private_thread*, scheduler*) {
 
 void abstract_actor_shell::on_cleanup(const error& reason) {
   auto lg = log::net::trace("reason = {}", reason);
-  close_mailbox(reason);
+  close_mailbox();
   // Detach from owner.
   {
     std::unique_lock<std::mutex> guard{loop_mtx_};
@@ -199,16 +199,16 @@ void abstract_actor_shell::do_unstash(mailbox_element_ptr ptr) {
   mailbox_.push_front(std::move(ptr));
 }
 
-void abstract_actor_shell::close_mailbox(const error& reason) {
+void abstract_actor_shell::close_mailbox() {
   if (!mailbox_.closed()) {
-    auto dropped = mailbox_.close(reason);
+    auto dropped = mailbox_.close();
     if (dropped > 0 && metrics_.mailbox_size)
       metrics_.mailbox_size->dec(static_cast<int64_t>(dropped));
   }
 }
 
 void abstract_actor_shell::force_close_mailbox() {
-  close_mailbox(make_error(exit_reason::unreachable));
+  close_mailbox();
 }
 
 flow::coordinator* abstract_actor_shell::flow_context() {

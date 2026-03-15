@@ -53,7 +53,7 @@ public:
 
   // -- constructors, destructors, and assignment operators --------------------
 
-  local_actor(actor_config& cfg);
+  explicit local_actor(actor_config& cfg);
 
   ~local_actor() override;
 
@@ -284,6 +284,10 @@ public:
   // -- here be dragons: end of public interface -------------------------------
 
   /// @cond
+
+  /// Returns a pointer to this actor as a resumable if this actor implements
+  /// the resumable interface. Returns `nullptr` otherwise.
+  virtual resumable* as_resumable() noexcept;
 
   auto& builtin_metrics() noexcept {
     return metrics_;

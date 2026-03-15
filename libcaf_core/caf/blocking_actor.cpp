@@ -5,11 +5,14 @@
 #include "caf/blocking_actor.hpp"
 
 #include "caf/actor_system.hpp"
+#include "caf/adopt_ref.hpp"
 #include "caf/anon_mail.hpp"
+#include "caf/detail/actor_system_access.hpp"
 #include "caf/detail/assert.hpp"
 #include "caf/detail/current_actor.hpp"
 #include "caf/detail/default_invoke_result_visitor.hpp"
 #include "caf/detail/invoke_result_visitor.hpp"
+#include "caf/detail/mailbox_factory.hpp"
 #include "caf/detail/private_thread.hpp"
 #include "caf/detail/set_thread_name.hpp"
 #include "caf/detail/sync_request_bouncer.hpp"
@@ -45,7 +48,11 @@ bool blocking_actor::accept_one_cond::post() {
 
 blocking_actor::blocking_actor(actor_config& cfg)
   : super(cfg.add_flag(local_actor::is_blocking_flag)) {
-  // nop
+  if (auto* factory = cfg.mbox_factory) {
+    mailbox_.reset(factory->make(this), caf::adopt_ref);
+  } else {
+    mailbox_.reset(new detail::default_mailbox, caf::adopt_ref);
+  }
 }
 
 blocking_actor::~blocking_actor() {
@@ -67,7 +74,7 @@ bool blocking_actor::enqueue(mailbox_element_ptr ptr, scheduler*) {
   switch (mailbox().push_back(std::move(ptr))) {
     case intrusive::inbox_result::queue_closed: {
       CAF_LOG_REJECT_EVENT();
-      home_system().message_rejected(this);
+      detail::actor_system_access{home_system()}.message_rejected(this);
       if (auto* mailbox_size = metrics_.mailbox_size) {
         mailbox_size->dec();
       }
@@ -347,7 +354,7 @@ size_t blocking_actor::attach_functor(const strong_actor_ptr& ptr) {
 }
 
 void blocking_actor::on_cleanup(const error& reason) {
-  close_mailbox(reason);
+  close_mailbox();
   on_exit();
   return super::on_cleanup(reason);
 }
@@ -357,17 +364,17 @@ void blocking_actor::unstash() {
     mailbox().push_front(mailbox_element_ptr{stashed});
 }
 
-void blocking_actor::close_mailbox(const error& reason) {
-  if (!mailbox_.closed()) {
+void blocking_actor::close_mailbox() {
+  if (!mailbox_->closed()) {
     unstash();
-    auto dropped = mailbox_.close(reason);
+    auto dropped = mailbox_->close();
     if (dropped > 0 && metrics_.mailbox_size)
       metrics_.mailbox_size->dec(static_cast<int64_t>(dropped));
   }
 }
 
 void blocking_actor::force_close_mailbox() {
-  close_mailbox(make_error(exit_reason::unreachable));
+  close_mailbox();
 }
 
 void blocking_actor::do_unstash(mailbox_element_ptr ptr) {

@@ -107,10 +107,10 @@ public:
 
   virtual ~runnable();
 
-  /// Sets the thread-local metric registry.
+  /// Sets the current metric registry.
   void current_metric_registry(const telemetry::metric_registry* ptr);
 
-  /// Returns the thread-local metric registry.
+  /// Returns the current metric registry.
   [[nodiscard]] const telemetry::metric_registry*
   current_metric_registry() const noexcept;
 
@@ -126,7 +126,8 @@ public:
   /// Returns the timeout for checks against the metric registry.
   [[nodiscard]] timespan metric_registry_poll_timeout() const noexcept;
 
-  /// Generates a message with the INFO severity level.
+  /// Records a failure with the given message and aborts the test by raising
+  /// requirement_failed.
   template <class... Ts>
   [[noreturn]] void fail(format_string_with_location fwl, Ts&&... xs) {
     auto msg = detail::format(fwl.value, std::forward<Ts>(xs)...);
@@ -188,7 +189,7 @@ public:
     return false;
   }
 
-  /// Checks whether `lhs` less than or equal to `rhs`.
+  /// Checks whether `lhs` is less than or equal to `rhs`.
   template <class T0, class T1>
   bool check_le(const T0& lhs, const T1& rhs,
                 const std::source_location& location
@@ -220,7 +221,7 @@ public:
     return false;
   }
 
-  /// Checks whether `lhs` greater than or equal to `rhs`.
+  /// Checks whether `lhs` is greater than or equal to `rhs`.
   template <class T0, class T1>
   bool check_ge(const T0& lhs, const T1& rhs,
                 const std::source_location& location
@@ -525,7 +526,8 @@ public:
       requirement_failed::raise(location);
   }
 
-  /// Evaluates whether `lhs` less than or equal to `rhs` and fails otherwise.
+  /// Evaluates whether `lhs` is less than or equal to `rhs` and fails
+  /// otherwise.
   template <class T0, class T1>
   void require_le(const T0& lhs, const T1& rhs,
                   const std::source_location& location
@@ -543,7 +545,7 @@ public:
       requirement_failed::raise(location);
   }
 
-  /// Evaluates whether `lhs` greater than or equal to `rhs` and fails
+  /// Evaluates whether `lhs` is greater than or equal to `rhs` and fails
   /// otherwise.
   template <class T0, class T1>
   void require_ge(const T0& lhs, const T1& rhs,
@@ -557,7 +559,7 @@ public:
   void require(bool value, const std::source_location& location
                            = std::source_location::current());
 
-  /// Checks whether `what` holds a value.
+  /// Requires that `what` holds a value. Fails otherwise.
   template <class T>
   void require_has_value(const std::optional<T>& what,
                          const std::source_location& location
@@ -567,7 +569,7 @@ public:
     }
   }
 
-  /// Checks whether `what` holds a value.
+  /// Requires that `what` holds a value. Fails otherwise.
   template <class T>
   void require_has_value(const expected<T>& what,
                          const std::source_location& location
@@ -575,6 +577,208 @@ public:
     if (!check_has_value(what, location)) {
       requirement_failed::raise(location);
     }
+  }
+
+  /// Requires the metric to have the given value or reach it within the
+  /// configured timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <std::integral ValueType>
+  void require_metric_eq(std::string_view prefix, std::string_view name,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_eq(prefix, name, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have the given value or reach it within the
+  /// configured timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <std::integral ValueType>
+  void require_metric_eq(std::string_view prefix, std::string_view name,
+                         std::vector<telemetry::label_view> labels,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_eq(prefix, name, labels, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have the given value or reach it within the
+  /// configured timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  void require_metric_eq(std::string_view prefix, std::string_view name,
+                         approx<double> value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_eq(prefix, name, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have the given value or reach it within the
+  /// configured timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  void require_metric_eq(std::string_view prefix, std::string_view name,
+                         std::vector<telemetry::label_view> labels,
+                         approx<double> value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_eq(prefix, name, labels, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value not equal to the given value or
+  /// reach such a value within the configured timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <std::integral ValueType>
+  void require_metric_ne(std::string_view prefix, std::string_view name,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_ne(prefix, name, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value not equal to the given value or
+  /// reach such a value within the configured timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <std::integral ValueType>
+  void require_metric_ne(std::string_view prefix, std::string_view name,
+                         std::vector<telemetry::label_view> labels,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_ne(prefix, name, labels, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value not equal to the given value
+  /// (within an epsilon) or reach such a value within the configured
+  /// timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  void require_metric_ne(std::string_view prefix, std::string_view name,
+                         approx<double> value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_ne(prefix, name, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value not equal to the given value
+  /// (within an epsilon) or reach such a value within the configured
+  /// timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  void require_metric_ne(std::string_view prefix, std::string_view name,
+                         std::vector<telemetry::label_view> labels,
+                         approx<double> value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_ne(prefix, name, labels, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value less than the given value or reach
+  /// such a value within the configured timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <detail::metric_predicate_value ValueType>
+  void require_metric_lt(std::string_view prefix, std::string_view name,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_lt(prefix, name, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value less than the given value or reach
+  /// such a value within the configured timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <detail::metric_predicate_value ValueType>
+  void require_metric_lt(std::string_view prefix, std::string_view name,
+                         std::vector<telemetry::label_view> labels,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_lt(prefix, name, labels, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value less than or equal to the given
+  /// value or reach such a value within the configured timeout. Fails
+  /// otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <detail::metric_predicate_value ValueType>
+  void require_metric_le(std::string_view prefix, std::string_view name,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_le(prefix, name, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value less than or equal to the given
+  /// value or reach such a value within the configured timeout. Fails
+  /// otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <detail::metric_predicate_value ValueType>
+  void require_metric_le(std::string_view prefix, std::string_view name,
+                         std::vector<telemetry::label_view> labels,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_le(prefix, name, labels, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value greater than the given value or
+  /// reach such a value within the configured timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <detail::metric_predicate_value ValueType>
+  void require_metric_gt(std::string_view prefix, std::string_view name,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_gt(prefix, name, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value greater than the given value or
+  /// reach such a value within the configured timeout. Fails otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <detail::metric_predicate_value ValueType>
+  void require_metric_gt(std::string_view prefix, std::string_view name,
+                         std::vector<telemetry::label_view> labels,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_gt(prefix, name, labels, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value greater than or equal to the given
+  /// value or reach such a value within the configured timeout. Fails
+  /// otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <detail::metric_predicate_value ValueType>
+  void require_metric_ge(std::string_view prefix, std::string_view name,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_ge(prefix, name, value, location))
+      requirement_failed::raise(location);
+  }
+
+  /// Requires the metric to have a value greater than or equal to the given
+  /// value or reach such a value within the configured timeout. Fails
+  /// otherwise.
+  /// @pre `current_metric_registry() != nullptr`
+  template <detail::metric_predicate_value ValueType>
+  void require_metric_ge(std::string_view prefix, std::string_view name,
+                         std::vector<telemetry::label_view> labels,
+                         ValueType value,
+                         const std::source_location& location
+                         = std::source_location::current()) {
+    if (!check_metric_ge(prefix, name, labels, value, location))
+      requirement_failed::raise(location);
   }
 
   template <class T>

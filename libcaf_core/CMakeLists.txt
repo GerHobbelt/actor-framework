@@ -151,7 +151,6 @@ caf_add_component(
     caf/detached_actors.test.cpp
     caf/detail/abstract_worker.cpp
     caf/detail/abstract_worker_hub.cpp
-    caf/detail/actor_system_access.cpp
     caf/detail/actor_system_impl.cpp
     caf/detail/aligned_alloc.cpp
     caf/detail/assert.cpp
@@ -184,8 +183,6 @@ caf_add_component(
     caf/detail/ieee_754.test.cpp
     caf/detail/invoke_result_visitor.cpp
     caf/detail/json.cpp
-    caf/detail/latch.cpp
-    caf/detail/latch.test.cpp
     caf/detail/log_level_map.cpp
     caf/detail/log_level_map.test.cpp
     caf/detail/mailbox_factory.cpp
@@ -349,6 +346,7 @@ caf_add_component(
     caf/parser_state.cpp
     caf/pec.test.cpp
     caf/proxy_registry.cpp
+    caf/console_printer.cpp
     caf/raise_error.cpp
     caf/ref_counted.cpp
     caf/request_timeout.test.cpp

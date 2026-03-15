@@ -64,6 +64,7 @@ caf_add_component(
     caf/net/http/request_header.cpp
     caf/net/http/request_header.test.cpp
     caf/net/http/responder.cpp
+    caf/net/http/responder.test.cpp
     caf/net/http/response.cpp
     caf/net/http/response_header.cpp
     caf/net/http/response_header.test.cpp
@@ -104,6 +105,7 @@ caf_add_component(
     caf/net/socket_event_layer.cpp
     caf/net/socket_guard.test.cpp
     caf/net/socket_manager.cpp
+    caf/net/socket_manager.test.cpp
     caf/net/ssl/connection.cpp
     caf/net/ssl/context.cpp
     caf/net/ssl/context.test.cpp
