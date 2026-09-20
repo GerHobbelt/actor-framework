@@ -105,6 +105,10 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 - The method `actor_system::redirect_text_output` is now deprecated. Configure a
   console printer instead via `actor_system_config::console_printer_factory()`
   before constructing the actor system.
+- The `http::with(...).connect(...)` API is now deprecated in favor of the new
+  `http::with_v2(...)` API.
+- Deprecate obsolete members of `caf::io::network`. This namespace contains
+  legacy networking APIs that have been replaced by the `caf::net` module.
 
 ### Added
 
@@ -153,6 +157,18 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   uses of `typeid` and `dynamic_cast` in CAF. This enables users to build CAF
   with compiler options such as `-fno-rtti`.
 - Added support for `std::monostate` in the inspection API (#2388).
+- Futures now support `dispose()` to cancel the asynchronous operation and can
+  convert to a `disposable` via `to_disposable()`. Whether calling `dispose()`
+  stops running background activity depends on the implementation of the task.
+  However, the observable result will always be the error `sec::disposed`. Any
+  result that the background computation may produce after calling `dispose()`
+  will be ignored (#2467).
+- The new `http::with_v2(...)` API is an iteration on the previous
+  `http::with(...)` design. It is easier to use and supports both synchronous
+  and asynchronous operation modes. In async mode, clients now return a single
+  `future` object instead of `expected<pair<future, disposable>>`. Further, it
+  does not block the current thread while establishing new connections. In
+  synchronous mode, the entire communication will run on the calling thread.
 
 ### Fixed
 
@@ -184,6 +200,9 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Removed
 
+- Removed the unused `caf::flow::subscription::fwd_impl` class and its companion
+  `subscription::listener` interface. Both were leftovers from earlier flow API
+  iterations and had no remaining callers (#2464).
 - For event-based actors (`scheduled_actor`), removed `set_down_handler` and the
   single-argument `monitor` / `demonitor` overloads for actor handles. Use
   `monitor(handle, callback)` and the returned `disposable` instead (#1873).

@@ -121,6 +121,7 @@ caf_add_component(
     caf/behavior.cpp
     caf/binary_deserializer.cpp
     caf/binary_serializer.cpp
+    caf/byte_buffer.cpp
     caf/blocking_actor.cpp
     caf/blocking_actor.test.cpp
     caf/byte_reader.cpp
@@ -176,6 +177,7 @@ caf_add_component(
     caf/detail/critical.cpp
     caf/detail/current_actor.cpp
     caf/detail/daemons.cpp
+    caf/detail/daemons.test.cpp
     caf/detail/default_mailbox.cpp
     caf/detail/default_actor_handle_codec.cpp
     caf/detail/default_mailbox.test.cpp

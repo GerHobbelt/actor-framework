@@ -36,15 +36,15 @@ public:
   /// @param args Additional arguments forwarded to `fn`.
   template <class Fn, class... Args>
   actor launch(Fn fn, std::function<void(actor)> do_stop, Args&&... args) {
-    // Launches a new background worker. We need to this lazily to enable
+    // Launches a new background worker. We need to do this lazily to enable
     // `do_launch` to atomically create the worker and add it to the internal
     // map. If `stop()` has been called prior, we return an invalid actor handle
     // and never call `do_spawn`.
     auto do_spawn = [args = std::make_tuple(std::forward<Args>(args)...),
-                     fn = std::move(fn)](actor_system& sys) {
+                     fn = std::move(fn)](actor_system& sys) mutable {
       // TODO: simply capture args... in the lambda when we switch to C++20
       return std::apply(
-        [&fn, &sys](auto&&... xs) {
+        [fn = std::move(fn), &sys](auto&&... xs) mutable {
           return sys.spawn<hidden + detached>(std::move(fn), xs...);
         },
         std::move(args));

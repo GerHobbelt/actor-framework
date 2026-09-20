@@ -276,9 +276,10 @@ public:
                                            max_request_size);
     auto impl = detail::make_accept_handler(std::move(factory), max_connections,
                                             monitored_actors);
-    auto ptr = net::socket_manager::make(mpx, std::move(impl));
-    if (mpx->start(ptr))
-      return expected<disposable>{disposable{std::move(ptr)}};
+    auto mgr = net::socket_manager::make(mpx, std::move(impl));
+    if (mpx->start(mgr)) {
+      return disposable{std::move(mgr)};
+    }
     return expected<disposable>{
       unexpect, sec::logic_error,
       "failed to register socket manager to net::multiplexer"};
@@ -424,8 +425,20 @@ with_t::server&& with_t::server::max_connections(size_t value) && {
   return std::move(*this);
 }
 
+with_t::server&& with_t::server::max_connections(expected<size_t> value) && {
+  if (value)
+    config_->max_connections = *value;
+  return std::move(*this);
+}
+
 with_t::server&& with_t::server::max_request_size(size_t value) && {
   config_->max_request_size = value;
+  return std::move(*this);
+}
+
+with_t::server&& with_t::server::max_request_size(expected<size_t> value) && {
+  if (value)
+    config_->max_request_size = *value;
   return std::move(*this);
 }
 

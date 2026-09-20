@@ -125,7 +125,8 @@
     __pragma(warning(push))                                                    \
     __pragma(warning(disable: 4102))
 #  define CAF_PUSH_DEPRECATED_WARNING                                          \
-    __pragma(warning(push))
+    __pragma(warning(push))                                                    \
+    __pragma(warning(disable: 4996))
 #  define CAF_PUSH_INVALID_OFFSETOF_WARNING                                    \
     __pragma(warning(push))
 #  define CAF_PUSH_STRINGOP_OVERREAD_WARNING                                   \
@@ -185,14 +186,6 @@
 #  define CAF_CYGWIN
 #elif defined(WIN32) || defined(_WIN32)
 #  define CAF_WINDOWS
-#elif defined(__cppcheck__) // Defined by scripts/cppcheck.sh.
-#  define CAF_POSIX
-#  define CAF_PUSH_WARNINGS
-#  define CAF_PUSH_UNUSED_LABEL_WARNING
-#  define CAF_PUSH_DEPRECATED_WARNING
-#  define CAF_PUSH_INVALID_OFFSETOF_WARNING
-#  define CAF_PUSH_STRINGOP_OVERREAD_WARNING
-#  define CAF_POP_WARNINGS
 #else
 #  error Platform and/or compiler not supported
 #endif

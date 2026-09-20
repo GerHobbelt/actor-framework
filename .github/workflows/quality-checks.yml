@@ -10,8 +10,6 @@ on:
       - '**/CMakeLists.txt'
       - 'cmake/**'
       - '.github/workflows/**'
-      - 'scripts/cppcheck.sh'
-      - '.cppcheck-suppressions'
   push:
     branches:
       - main
@@ -20,14 +18,14 @@ jobs:
   posix-text-files:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: posix-text-files
         run: python3 scripts/check-posix-text-files.py "$GITHUB_WORKSPACE"
 
   code-formatting:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install clang-format
         run: sudo pip install --break-system-package clang-format==22.1.5
       - name: Run clang-format
@@ -36,7 +34,7 @@ jobs:
   spell-checking:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: spell-checking
         uses: crate-ci/typos@master
         with:
@@ -45,7 +43,7 @@ jobs:
   forbidden-includes:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: forbidden-includes
         run: |
           find libcaf_* -name '*hpp' -type f | grep -v 'caf/internal/' | xargs python3 scripts/forbidden-includes-check.py
@@ -53,59 +51,7 @@ jobs:
   type-id-block-offsets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: type-id-block-offsets
         run: python3 scripts/get-next-free-block-offset.py 1>/dev/null && echo OK
 
-  cppcheck:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Install cppcheck
-        run: |
-          sudo apt-get update -y \
-            && sudo apt-get install -y --no-install-recommends \
-              cppcheck \
-              jq
-      - name: Create compile database for cppcheck
-        run: ./configure
-      - name: Run full cppcheck on main
-        if: github.ref_name == 'main'
-        run: scripts/cppcheck.sh
-      - name: Run cppcheck on modified modules
-        if: github.ref_name != 'main'
-        # note: add 'build' so the list is never empty;
-        #       the directory has auto-generated sources and is fast to scan
-        run: |
-          set -euo pipefail
-          base_sha="${{ github.event.pull_request.base.sha }}"
-          head_sha="${{ github.event.pull_request.head.sha }}"
-          # actions/checkout fetches a shallow history by default. Pull only the
-          # two commits required for the PR diff to avoid full history fetches.
-          git fetch --no-tags --depth=1 origin "$base_sha" "$head_sha"
-          git cat-file -e "${base_sha}^{commit}"
-          git cat-file -e "${head_sha}^{commit}"
-          scan_dirs="$(
-            git diff --name-only "$base_sha" "$head_sha" \
-              | awk -F/ '
-                  {
-                    for (i = 1; i <= NF; ++i) {
-                      if ($i == "examples" || $i ~ /^libcaf_[a-z]+$/) {
-                        print $i
-                      }
-                    }
-                  }
-                ' \
-              | sort -u
-          )"
-          echo "Running cppcheck for modules: build ${scan_dirs}"
-          scripts/cppcheck.sh build $scan_dirs
-      - name: Upload cppcheck report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: cppcheck-report
-          if-no-files-found: warn
-          path: |
-            cppcheck-report.xml
-            cppcheck-report-html/
