@@ -7,7 +7,6 @@
 #include "caf/detail/build_config.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/error_code_enum.hpp"
-#include "caf/typed_actor_pack.hpp"
 #include "caf/weak_intrusive_ptr_traits.hpp"
 
 #include <cstddef>
@@ -45,8 +44,10 @@ template <class> struct inspector_access;
 template <class> struct timeout_definition;
 template <class> struct type_id;
 
-template <uint16_t> struct type_by_id;
-template <uint16_t> struct type_name_by_id;
+enum class type_id_t : uint16_t;
+
+template <type_id_t> struct type_by_id;
+template <type_id_t> struct type_name_by_id;
 
 class [[nodiscard]] error;
 
@@ -83,11 +84,11 @@ template <class...> class typed_response_promise;
 template <class, class...> class event_based_fan_out_response_handle;
 template <class, class...> class event_based_fan_out_delayed_response_handle;
 
-template <class... Ts> requires typed_actor_pack<Ts...> class typed_actor;
-template <class... Ts> requires typed_actor_pack<Ts...> class typed_actor_pointer;
-template <class... Ts> requires typed_actor_pack<Ts...> class typed_actor_view;
-template <class... Ts> requires typed_actor_pack<Ts...> class typed_behavior;
-template <class... Ts> requires typed_actor_pack<Ts...> class typed_event_based_actor;
+template <class...> class typed_actor;
+template <class...> class typed_actor_pointer;
+template <class...> class typed_actor_view;
+template <class...> class typed_behavior;
+template <class...> class typed_event_based_actor;
 
 // clang-format on
 
@@ -164,6 +165,7 @@ class skippable_result;
 class stream;
 class text_reader;
 class thread_hook;
+class type_id_mapper;
 class type_id_list;
 class uri;
 class uri_builder;
@@ -221,7 +223,6 @@ using ip_address = ipv6_address;
 using ip_endpoint = ipv6_endpoint;
 using ip_subnet = ipv6_subnet;
 using settings = dictionary<config_value>;
-using type_id_t = uint16_t;
 
 #ifdef CAF_USE_STD_EXPECTED
 template <class E>

@@ -37,6 +37,12 @@ public:
   /// Returns whether the serialization format is human-readable.
   virtual bool has_human_readable_format() const noexcept = 0;
 
+  /// Returns the type ID for the human-readable @p type_name. Implementations
+  /// may override this to apply custom type name mappings (e.g. via a
+  /// @ref type_id_mapper). The default implementation delegates to
+  /// @ref query_type_id.
+  virtual type_id_t to_type_id(std::string_view type_name) const;
+
   // -- interface functions ----------------------------------------------------
 
   /// Reads run-time-type information for the next object if available.
@@ -182,6 +188,9 @@ public:
 
   /// Reads the vector of booleans from the input.
   virtual bool value(std::vector<bool>& x);
+
+  /// @copydoc value
+  virtual bool value(type_id_list& xs);
 
   // Announce special handling of `vector<bool>` to the inspection API.
   bool builtin_inspect(std::vector<bool>& x) {

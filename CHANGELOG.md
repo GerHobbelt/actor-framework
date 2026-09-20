@@ -7,6 +7,8 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Changed
 
+- `caf::type_id_t` is now an `enum class` instead of a `uint16_t` alias to
+  prevent implicit conversions to integer types.
 - CAF now requires C++20 to build.
 - When using the HTTP client API, SSL hostname validation is now enabled by
   default. Users can disable it by setting `hostname_validation` to `false` if
@@ -172,6 +174,13 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 - Fix a heap-buffer-overflow in the test runner on missing CLI arguments. For
   example, running `caf-core-test -s` previously crashed (`-s` requires an
   argument, #2384).
+- When using the HTTP server API with an SPSC buffer, the HTTP server now
+  responds with `503 Service Unavailable` when encountering backpressure from
+  the consumer, i.e., if the HTTP client sends requests faster than the server
+  can process them.
+- Added type information to the serialization format of `caf::message` for human
+  readable serializers (such as `json`). This representation resolves issues
+  related to `caf::message` deserialization in those formats.
 
 ### Removed
 

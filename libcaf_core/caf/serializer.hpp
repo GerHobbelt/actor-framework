@@ -9,7 +9,6 @@
 #include "caf/detail/squashed_int.hpp"
 #include "caf/fwd.hpp"
 #include "caf/save_inspector_base.hpp"
-#include "caf/sec.hpp"
 
 #include <concepts>
 #include <cstddef>
@@ -17,9 +16,6 @@
 #include <span>
 #include <string>
 #include <string_view>
-#include <tuple>
-#include <type_traits>
-#include <utility>
 
 namespace caf {
 
@@ -38,6 +34,12 @@ public:
 
   /// Returns whether the serialization format is human-readable.
   virtual bool has_human_readable_format() const noexcept = 0;
+
+  /// Returns the human-readable type name for @p id. Implementations may
+  /// override this to apply custom type name mappings (e.g. via a
+  /// @ref type_id_mapper). The default implementation delegates to
+  /// @ref query_type_name.
+  virtual std::string_view to_type_name(type_id_t id) const;
 
   // -- interface functions ----------------------------------------------------
 
@@ -153,6 +155,9 @@ public:
 
   /// Adds the vector of booleans to the output.
   virtual bool value(const std::vector<bool>& x);
+
+  /// @copydoc value
+  virtual bool value(type_id_list xs);
 
   // Announce special handling of `vector<bool>` to the inspection API.
   bool builtin_inspect(const std::vector<bool>& x) {

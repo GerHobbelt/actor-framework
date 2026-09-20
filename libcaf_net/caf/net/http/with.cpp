@@ -15,10 +15,10 @@
 #include "caf/actor_system.hpp"
 #include "caf/add_ref.hpp"
 #include "caf/defaults.hpp"
+#include "caf/detail/accept_handler.hpp"
 #include "caf/detail/connection_acceptor.hpp"
 #include "caf/detail/connection_guard.hpp"
 #include "caf/detail/connector.hpp"
-#include "caf/internal/accept_handler.hpp"
 #include "caf/internal/make_transport.hpp"
 #include "caf/internal/net_config.hpp"
 #include "caf/make_counted.hpp"
@@ -67,7 +67,7 @@ public:
   }
 
   bool push(const net::http::request& item) override {
-    return buf_->push(item);
+    return buf_->try_push(item) == async::write_result::ok;
   }
 
 private:
@@ -245,9 +245,10 @@ public:
       auto producer = make_http_request_producer({mpx, add_ref},
                                                  push.try_open());
       auto new_route = make_route([producer](responder& res) {
-        if (!producer->push(responder{res}.to_request())) {
-          auto err = make_error(sec::runtime_error, "flow disconnected");
-          res.router()->abort_and_shutdown(err);
+        auto req = responder{res}.to_request();
+        if (!producer->push(req)) {
+          req.respond(status::service_unavailable, "text/plain",
+                      "service unavailable: request could not be queued");
         }
       });
       if (!new_route) {
@@ -273,9 +274,8 @@ public:
     auto factory = make_http_conn_acceptor(std::move(acc), routes,
                                            max_consecutive_reads,
                                            max_request_size);
-    auto impl = internal::make_accept_handler(std::move(factory),
-                                              max_connections,
-                                              monitored_actors);
+    auto impl = detail::make_accept_handler(std::move(factory), max_connections,
+                                            monitored_actors);
     auto ptr = net::socket_manager::make(mpx, std::move(impl));
     if (mpx->start(ptr))
       return expected<disposable>{disposable{std::move(ptr)}};

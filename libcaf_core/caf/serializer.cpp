@@ -6,11 +6,18 @@
 
 #include "caf/actor_control_block.hpp"
 #include "caf/actor_handle_codec.hpp"
+#include "caf/format_to_error.hpp"
+#include "caf/type_id.hpp"
+#include "caf/type_id_list.hpp"
 
 namespace caf {
 
 serializer::~serializer() {
   // nop
+}
+
+std::string_view serializer::to_type_name(type_id_t id) const {
+  return query_type_name(id);
 }
 
 bool serializer::begin_key_value_pair() {
@@ -47,6 +54,22 @@ bool serializer::value(const std::vector<bool>& xs) {
   for (bool x : xs)
     if (!value(x))
       return false;
+  return end_sequence();
+}
+
+bool serializer::value(type_id_list xs) {
+  if (!begin_sequence(xs.size()))
+    return false;
+  for (auto id : xs) {
+    auto tname = to_type_name(id);
+    if (tname.empty()) {
+      set_error(format_to_error(sec::runtime_error,
+                                "failed to get type name for type ID {}", id));
+      return false;
+    }
+    if (!value(tname))
+      return false;
+  }
   return end_sequence();
 }
 

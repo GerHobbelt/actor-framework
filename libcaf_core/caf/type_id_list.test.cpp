@@ -4,9 +4,20 @@
 
 #include "caf/type_id_list.hpp"
 
+#include "caf/test/scenario.hpp"
 #include "caf/test/test.hpp"
 
+#include "caf/binary_deserializer.hpp"
+#include "caf/binary_serializer.hpp"
+#include "caf/detail/type_id_list_builder.hpp"
 #include "caf/init_global_meta_objects.hpp"
+#include "caf/json_reader.hpp"
+#include "caf/json_writer.hpp"
+#include "caf/message.hpp"
+#include "caf/sec.hpp"
+#include "caf/type_id.hpp"
+
+#include <string>
 
 namespace detail {
 
@@ -49,21 +60,22 @@ CAF_END_TYPE_ID_BLOCK(type_id_test)
 using namespace caf;
 
 TEST("lists store the size at index 0") {
-  type_id_t data[] = {3, 1, 2, 4};
+  type_id_t data[] = {type_id_t{3}, type_id_t{1}, type_id_t{2}, type_id_t{4}};
   type_id_list xs{data};
   check_eq(xs.size(), 3u);
-  check_eq(xs[0], 1u);
-  check_eq(xs[1], 2u);
-  check_eq(xs[2], 4u);
+  check_eq(xs[0], type_id_t{1});
+  check_eq(xs[1], type_id_t{2});
+  check_eq(xs[2], type_id_t{4});
 }
 
 TEST("lists are comparable") {
-  type_id_t data[] = {3, 1, 2, 4};
+  type_id_t data[] = {type_id_t{3}, type_id_t{1}, type_id_t{2}, type_id_t{4}};
   type_id_list xs{data};
-  type_id_t data_copy[] = {3, 1, 2, 4};
+  type_id_t data_copy[] = {type_id_t{3}, type_id_t{1}, type_id_t{2},
+                           type_id_t{4}};
   type_id_list ys{data_copy};
   check_eq(xs, ys);
-  data_copy[1] = 10;
+  data_copy[1] = type_id_t{10};
   check_ne(xs, ys);
   check_lt(xs, ys);
   check_eq(make_type_id_list<add_atom>(), make_type_id_list<add_atom>());
@@ -87,9 +99,9 @@ TEST("type ID lists are concatenable") {
   // 1 + 0
   check_eq((make_type_id_list<int8_t>()),
            type_id_list::concat(make_type_id_list<int8_t>(),
-                                make_type_id_list<>()));
+                                make_type_id_list()));
   check_eq((make_type_id_list<int8_t>()),
-           type_id_list::concat(make_type_id_list<>(),
+           type_id_list::concat(make_type_id_list(),
                                 make_type_id_list<int8_t>()));
   // 1 + 1
   check_eq((make_type_id_list<int8_t, int16_t>()),
@@ -98,9 +110,9 @@ TEST("type ID lists are concatenable") {
   // 2 + 0
   check_eq((make_type_id_list<int8_t, int16_t>()),
            type_id_list::concat(make_type_id_list<int8_t, int16_t>(),
-                                make_type_id_list<>()));
+                                make_type_id_list()));
   check_eq((make_type_id_list<int8_t, int16_t>()),
-           type_id_list::concat(make_type_id_list<>(),
+           type_id_list::concat(make_type_id_list(),
                                 make_type_id_list<int8_t, int16_t>()));
   // 2 + 1
   check_eq((make_type_id_list<int8_t, int16_t, int32_t>()),
@@ -113,4 +125,200 @@ TEST("type ID lists are concatenable") {
   check_eq((make_type_id_list<int8_t, int16_t, int32_t, int64_t>()),
            type_id_list::concat(make_type_id_list<int8_t, int16_t>(),
                                 make_type_id_list<int32_t, int64_t>()));
+}
+
+SCENARIO("type ID lists are serializable") {
+  GIVEN("a non-empty type ID list") {
+    auto xs = make_type_id_list<int32_t, std::string, double>();
+    WHEN("serializing with a binary serializer") {
+      byte_buffer buf;
+      binary_serializer sink{buf};
+      check(sink.value(xs));
+      THEN("a binary deserializer reproduces the list") {
+        binary_deserializer source{buf};
+        type_id_list ys = make_type_id_list();
+        check(source.value(ys));
+        check_eq(xs, ys);
+      }
+      AND_THEN("apply roundtrips via the binary serializer") {
+        binary_deserializer source{buf};
+        type_id_list ys = make_type_id_list();
+        check(source.apply(ys));
+        check_eq(xs, ys);
+      }
+      AND_THEN("a deserializer with use_type_names(true) fails") {
+        binary_deserializer source{buf};
+        source.use_type_names(true);
+        type_id_list ys = make_type_id_list();
+        check(!source.value(ys));
+      }
+    }
+    WHEN("serializing with use_type_names(true)") {
+      byte_buffer buf;
+      binary_serializer sink{buf};
+      sink.use_type_names(true);
+      check(sink.value(xs));
+      THEN("a matching binary deserializer reproduces the list") {
+        binary_deserializer source{buf};
+        source.use_type_names(true);
+        type_id_list ys = make_type_id_list();
+        check(source.value(ys));
+        check_eq(xs, ys);
+      }
+      AND_THEN("a deserializer without the flag does not reproduce the list") {
+        binary_deserializer source{buf};
+        type_id_list ys = make_type_id_list();
+        auto ok = source.value(ys);
+        check(!ok || ys != xs);
+      }
+    }
+    WHEN("serializing with use_type_names(true) and a custom mapper") {
+      struct alias_mapper : type_id_mapper {
+        std::string_view operator()(type_id_t type) const override {
+          if (type == type_id_v<int32_t>)
+            return "my_app.int32";
+          return query_type_name(type);
+        }
+        type_id_t operator()(std::string_view name) const override {
+          if (name == "my_app.int32")
+            return type_id_v<int32_t>;
+          return query_type_id(name);
+        }
+      };
+      alias_mapper mapper;
+      byte_buffer buf;
+      binary_serializer sink{buf};
+      sink.use_type_names(true);
+      sink.mapper(&mapper);
+      check(sink.value(xs));
+      THEN("a deserializer with the same mapper reproduces the list") {
+        binary_deserializer source{buf};
+        source.use_type_names(true);
+        source.mapper(&mapper);
+        type_id_list ys = make_type_id_list();
+        check(source.value(ys));
+        check_eq(xs, ys);
+      }
+      AND_THEN("a deserializer without the mapper fails") {
+        binary_deserializer source{buf};
+        source.use_type_names(true);
+        type_id_list ys = make_type_id_list();
+        check(!source.value(ys));
+      }
+    }
+    WHEN("using a mapper that does not fall back to global queries") {
+      struct alias_mapper : type_id_mapper {
+        std::string_view operator()(type_id_t type) const override {
+          if (type == type_id_v<int32_t>)
+            return "my_app.int32";
+          return {};
+        }
+        type_id_t operator()(std::string_view name) const override {
+          if (name == "my_app.int32")
+            return type_id_v<int32_t>;
+          return invalid_type_id;
+        }
+      };
+      alias_mapper mapper;
+      auto ys = make_type_id_list<int32_t>();
+      byte_buffer buf;
+      binary_serializer sink{buf};
+      sink.use_type_names(true);
+      sink.mapper(&mapper);
+      check(sink.value(ys));
+      THEN("a deserializer with the same mapper roundtrips") {
+        binary_deserializer source{buf};
+        source.use_type_names(true);
+        source.mapper(&mapper);
+        type_id_list zs = make_type_id_list();
+        check(source.value(zs));
+        check_eq(ys, zs);
+      }
+      AND_THEN("mismatched mappers fail to roundtrip") {
+        byte_buffer std_buf;
+        binary_serializer std_sink{std_buf};
+        std_sink.use_type_names(true);
+        check(std_sink.value(ys));
+        binary_deserializer source{std_buf};
+        source.use_type_names(true);
+        source.mapper(&mapper);
+        type_id_list zs = make_type_id_list();
+        check(!source.value(zs));
+      }
+    }
+    WHEN("serializing with a JSON writer") {
+      json_writer sink;
+      check(sink.value(xs));
+      THEN("the JSON contains type name strings") {
+        auto json = sink.str();
+        check(json.find("int32_t") != std::string::npos);
+        check(json.find("string") != std::string::npos);
+        check(json.find("double") != std::string::npos);
+      }
+      AND_THEN("a JSON reader reproduces the list") {
+        json_reader source;
+        type_id_list ys = make_type_id_list();
+        check(source.load(sink.str()));
+        check(source.value(ys));
+        check_eq(xs, ys);
+      }
+      AND_THEN("apply roundtrips via the JSON reader") {
+        json_reader source;
+        type_id_list ys = make_type_id_list();
+        check(source.load(sink.str()));
+        check(source.apply(ys));
+        check_eq(xs, ys);
+      }
+    }
+  }
+  GIVEN("an empty type ID list") {
+    auto xs = make_type_id_list();
+    WHEN("serializing with a binary serializer") {
+      byte_buffer buf;
+      binary_serializer sink{buf};
+      check(sink.value(xs));
+      THEN("a binary deserializer reproduces the empty list") {
+        binary_deserializer source{buf};
+        type_id_list ys = make_type_id_list();
+        check(source.value(ys));
+        check_eq(xs, ys);
+        check(ys.empty());
+      }
+    }
+    WHEN("serializing with a JSON writer") {
+      json_writer sink;
+      check(sink.value(xs));
+      THEN("a JSON reader reproduces the empty list") {
+        json_reader source;
+        type_id_list ys = make_type_id_list();
+        check(source.load(sink.str()));
+        check(source.value(ys));
+        check_eq(xs, ys);
+        check(ys.empty());
+      }
+    }
+  }
+}
+
+TEST("binary serializers use integer type IDs by default") {
+  byte_buffer buf;
+  check(!binary_serializer{buf}.use_type_names());
+}
+
+SCENARIO("message load rejects oversized type lists") {
+  GIVEN("a binary payload exceeding the maximum size") {
+    byte_buffer buf;
+    binary_serializer sink{buf};
+    require(sink.begin_object(type_id_v<message>, "message"));
+    require(sink.begin_field("types"));
+    require(sink.begin_sequence(type_id_list::max_size + 1));
+    WHEN("loading the message from the binary payload") {
+      binary_deserializer source{buf};
+      message loaded;
+      THEN("deserialization fails before reading values") {
+        check(!loaded.load(source.as_deserializer()));
+        check_eq(source.get_error(), sec::invalid_argument);
+      }
+    }
+  }
 }

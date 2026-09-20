@@ -7,8 +7,11 @@
 #include "caf/actor_handle_codec.hpp"
 #include "caf/detail/ieee_754.hpp"
 #include "caf/detail/network_order.hpp"
+#include "caf/detail/type_id_list_builder.hpp"
 #include "caf/error.hpp"
 #include "caf/sec.hpp"
+#include "caf/type_id.hpp"
+#include "caf/type_id_list.hpp"
 
 #include <sstream>
 #include <type_traits>
@@ -24,6 +27,9 @@ namespace caf {
 
 class binary_deserializer_impl : public byte_reader {
 public:
+  // -- member types -----------------------------------------------------------
+
+  using super = byte_reader;
   // -- constructors, destructors, and assignment operators --------------------
 
   binary_deserializer_impl(const std::byte* buf, size_t size,
@@ -54,6 +60,22 @@ public:
     return true;
   }
 
+  [[nodiscard]] bool use_type_names() const noexcept override {
+    return use_type_names_;
+  }
+
+  void use_type_names(bool value) noexcept override {
+    use_type_names_ = value;
+  }
+
+  [[nodiscard]] const type_id_mapper* mapper() const noexcept override {
+    return mapper_;
+  }
+
+  void mapper(const type_id_mapper* ptr) noexcept override {
+    mapper_ = ptr;
+  }
+
   const std::byte* current() const noexcept {
     return current_;
   }
@@ -78,6 +100,10 @@ public:
 
   caf::actor_handle_codec* actor_handle_codec() noexcept override {
     return codec_;
+  }
+
+  type_id_t to_type_id(std::string_view name) const override {
+    return (*mapper_)(name);
   }
 
   bool fetch_next_object_type(type_id_t& type) noexcept override {
@@ -404,6 +430,34 @@ public:
     return end_sequence();
   }
 
+  bool value(type_id_list& xs) override {
+    if (use_type_names_)
+      return super::value(xs);
+    size_t size = 0;
+    if (!begin_sequence(size))
+      return false;
+    if (size > type_id_list::max_size) {
+      emplace_error(sec::invalid_argument);
+      return false;
+    }
+    if (size == 0) {
+      xs = make_type_id_list();
+      return end_sequence();
+    }
+    detail::type_id_list_builder ids{size};
+    using type_id_int_t = std::underlying_type_t<type_id_t>;
+    for (size_t i = 0; i < size; ++i) {
+      auto id = type_id_int_t{0};
+      if (!value(id))
+        return false;
+      ids.push_back(static_cast<type_id_t>(id));
+    }
+    if (!end_sequence())
+      return false;
+    xs = ids.move_to_list();
+    return true;
+  }
+
 private:
   /// Checks whether we can read `read_size` more bytes.
   bool range_check(size_t read_size) const noexcept {
@@ -451,6 +505,12 @@ private:
 
   /// The last occurred error.
   error err_;
+
+  bool use_type_names_ = false;
+
+  default_type_id_mapper default_mapper_;
+
+  const type_id_mapper* mapper_ = &default_mapper_;
 };
 
 // -- constructors, destructors, and assignment operators --------------------
