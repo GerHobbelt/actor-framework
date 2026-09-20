@@ -6,7 +6,7 @@
 
 #include "caf/async/producer.hpp"
 #include "caf/async/spsc_buffer.hpp"
-#include "caf/detail/atomic_ref_counted.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/intrusive_ptr.hpp"
 #include "caf/make_counted.hpp"
 
@@ -21,7 +21,7 @@ namespace caf::async {
 template <class T>
 class blocking_producer {
 public:
-  class impl : public detail::atomic_ref_counted, public producer {
+  class impl : public producer {
   public:
     impl() = delete;
     impl(const impl&) = delete;
@@ -93,15 +93,16 @@ public:
       }
     }
 
-    void ref_producer() const noexcept override {
-      ref();
+    void ref() const noexcept final {
+      ref_count_.inc();
     }
 
-    void deref_producer() const noexcept override {
-      deref();
+    void deref() const noexcept final {
+      ref_count_.dec(this);
     }
 
   private:
+    mutable detail::atomic_ref_count ref_count_;
     spsc_buffer_ptr<T> buf_;
     mutable std::mutex mtx_;
     std::condition_variable cv_;

@@ -4,11 +4,9 @@
 
 #include "caf/resumable.hpp"
 
-#include "caf/ref_counted.hpp"
-
 namespace caf {
 
-resumable::~resumable() {
+resumable::~resumable() noexcept {
   // nop
 }
 

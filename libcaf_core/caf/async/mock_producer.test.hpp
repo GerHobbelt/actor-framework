@@ -5,13 +5,13 @@
 #pragma once
 
 #include "caf/async/producer.hpp"
-#include "caf/detail/atomic_ref_counted.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 
 #include <atomic>
 
 namespace caf::async {
 
-class mock_producer : public detail::atomic_ref_counted, public producer {
+class mock_producer : public producer {
 public:
   void on_consumer_ready() override;
 
@@ -19,9 +19,9 @@ public:
 
   void on_consumer_demand(size_t new_demand) override;
 
-  void ref_producer() const noexcept override;
+  void ref() const noexcept final;
 
-  void deref_producer() const noexcept override;
+  void deref() const noexcept final;
 
   /// Incremented whenever `on_consumer_ready` is called.
   std::atomic<size_t> wakeups = 0;
@@ -31,6 +31,9 @@ public:
 
   /// Set to true if `on_consumer_cancel` is called.
   std::atomic<bool> canceled = false;
+
+private:
+  mutable detail::atomic_ref_count ref_count_;
 };
 
 } // namespace caf::async

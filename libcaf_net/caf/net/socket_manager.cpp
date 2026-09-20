@@ -233,12 +233,12 @@ public:
 
   // -- implementation of coordinator ------------------------------------------
 
-  void ref_execution_context() const noexcept override {
-    ref();
+  void ref() const noexcept final {
+    ref_count_.inc();
   }
 
-  void deref_execution_context() const noexcept override {
-    deref();
+  void deref() const noexcept final {
+    ref_count_.dec(this);
   }
 
   void schedule(action what) override {
@@ -286,14 +286,6 @@ public:
     return disposed_.load();
   }
 
-  void ref_disposable() const noexcept override {
-    ref();
-  }
-
-  void deref_disposable() const noexcept override {
-    deref();
-  }
-
 private:
   // -- utility functions ------------------------------------------------------
 
@@ -337,6 +329,8 @@ private:
 
   // -- member variables -------------------------------------------------------
 
+  mutable detail::atomic_ref_count ref_count_;
+
   /// Stores the socket file descriptor. The socket manager automatically closes
   /// the socket in its destructor.
   socket fd_;
@@ -379,16 +373,6 @@ socket_manager_ptr socket_manager::make(multiplexer* mpx,
                                         event_handler_ptr handler) {
   CAF_ASSERT(mpx != nullptr);
   return make_counted<socket_manager_impl>(std::move(mpx), std::move(handler));
-}
-
-// -- free functions -----------------------------------------------------------
-
-void intrusive_ptr_add_ref(socket_manager* ptr) noexcept {
-  ptr->ref();
-}
-
-void intrusive_ptr_release(socket_manager* ptr) noexcept {
-  ptr->deref();
 }
 
 } // namespace caf::net

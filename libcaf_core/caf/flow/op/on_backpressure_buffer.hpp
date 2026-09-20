@@ -6,6 +6,7 @@
 
 #include "caf/config.hpp"
 #include "caf/detail/assert.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/flow/backpressure_overflow_strategy.hpp"
 #include "caf/flow/observer.hpp"
 #include "caf/flow/op/hot.hpp"
@@ -54,14 +55,6 @@ public:
   }
 
   // -- implementation of observer_impl ----------------------------------------
-
-  void ref_coordinated() const noexcept override {
-    ref();
-  }
-
-  void deref_coordinated() const noexcept override {
-    deref();
-  }
 
   void on_subscribe(subscription sub) override {
     if (sub_) {
@@ -121,6 +114,16 @@ public:
       out_.on_error(what);
   }
 
+  // -- reference counting -----------------------------------------------------
+
+  void ref() const noexcept final {
+    ref_count_.inc();
+  }
+
+  void deref() const noexcept final {
+    ref_count_.dec(this);
+  }
+
 private:
   void do_dispose(bool from_external) override {
     if (!out_)
@@ -148,6 +151,8 @@ private:
         out_.on_complete();
     }
   }
+
+  mutable detail::atomic_ref_count ref_count_;
 
   /// Stores the context (coordinator) that runs this flow.
   coordinator* parent_;

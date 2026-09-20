@@ -5,6 +5,7 @@
 #pragma once
 
 #include "caf/detail/assert.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/flow/coordinator.hpp"
 #include "caf/flow/observer.hpp"
 #include "caf/flow/op/hot.hpp"
@@ -13,27 +14,16 @@
 #include "caf/intrusive_ptr.hpp"
 
 #include <deque>
-#include <memory>
+#include <tuple>
+#include <utility>
 
 namespace caf::flow::op {
 
 /// Shared state between an operator that emits values and the subscribed
 /// observer.
 template <class T>
-class ucast_sub_state : public detail::plain_ref_counted,
-                        public pullable,
-                        public coordinated {
+class ucast_sub_state : public pullable, public coordinated {
 public:
-  // -- friends ----------------------------------------------------------------
-
-  friend void intrusive_ptr_add_ref(const ucast_sub_state* ptr) noexcept {
-    ptr->ref();
-  }
-
-  friend void intrusive_ptr_release(const ucast_sub_state* ptr) noexcept {
-    ptr->deref();
-  }
-
   // -- member types -----------------------------------------------------------
 
   /// Interface for listeners that want to be notified when a `ucast_sub_state`
@@ -203,12 +193,12 @@ public:
     return parent_;
   }
 
-  void ref_coordinated() const noexcept override {
-    ref();
+  void ref() const noexcept final {
+    ref_count_.inc();
   }
 
-  void deref_coordinated() const noexcept override {
-    deref();
+  void deref() const noexcept final {
+    ref_count_.dec(this);
   }
 
 private:
@@ -239,13 +229,7 @@ private:
     }
   }
 
-  void do_ref() override {
-    this->ref();
-  }
-
-  void do_deref() override {
-    this->deref();
-  }
+  mutable detail::atomic_ref_count ref_count_;
 
   /// The coordinator for scheduling delayed function calls.
   coordinator* parent_;
@@ -282,6 +266,16 @@ public:
       state_->request(n);
   }
 
+  // -- reference counting -----------------------------------------------------
+
+  void ref() const noexcept final {
+    ref_count_.inc();
+  }
+
+  void deref() const noexcept final {
+    ref_count_.dec(this);
+  }
+
 private:
   void do_dispose(bool from_external) override {
     if (state_) {
@@ -292,6 +286,8 @@ private:
         state->cancel();
     }
   }
+
+  mutable detail::atomic_ref_count ref_count_;
 
   /// Stores the context (coordinator) that runs this flow.
   coordinator* parent_;

@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/flow/observable_decl.hpp"
 #include "caf/flow/observer.hpp"
 #include "caf/flow/op/cold.hpp"
@@ -104,14 +105,6 @@ public:
     }
   }
 
-  void ref_coordinated() const noexcept override {
-    this->ref();
-  }
-
-  void deref_coordinated() const noexcept override {
-    this->deref();
-  }
-
   // -- implementation of subscription -----------------------------------------
 
   bool disposed() const noexcept override {
@@ -124,6 +117,16 @@ public:
     if (demand_ == n && !pending_) {
       fire();
     }
+  }
+
+  // -- reference counting -----------------------------------------------------
+
+  void ref() const noexcept final {
+    ref_count_.inc();
+  }
+
+  void deref() const noexcept final {
+    ref_count_.dec(this);
   }
 
 private:
@@ -166,6 +169,8 @@ private:
     else
       out_.on_error(err_);
   }
+
+  mutable detail::atomic_ref_count ref_count_;
 
   /// Stores the context (coordinator) that runs this flow.
   coordinator* parent_;

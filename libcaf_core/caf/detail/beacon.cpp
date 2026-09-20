@@ -6,12 +6,12 @@
 
 namespace caf::detail {
 
-void beacon::ref_disposable() const noexcept {
-  ref();
+void beacon::ref() const noexcept {
+  ref_count_.inc();
 }
 
-void beacon::deref_disposable() const noexcept {
-  deref();
+void beacon::deref() const noexcept {
+  ref_count_.dec(this);
 }
 
 void beacon::dispose() {

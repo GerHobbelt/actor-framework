@@ -5,6 +5,7 @@
 #pragma once
 
 #include "caf/detail/assert.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/detail/type_list.hpp"
 #include "caf/flow/observer.hpp"
 #include "caf/flow/op/hot.hpp"
@@ -64,6 +65,16 @@ public:
     run_later();
   }
 
+  // -- reference counting -----------------------------------------------------
+
+  void ref() const noexcept final {
+    ref_count_.inc();
+  }
+
+  void deref() const noexcept final {
+    ref_count_.dec(this);
+  }
+
 private:
   void do_dispose(bool from_external) override {
     if (!out_)
@@ -120,6 +131,7 @@ private:
     std::apply(fn, steps_);
   }
 
+  mutable detail::atomic_ref_count ref_count_;
   coordinator* parent_;
   bool running_ = false;
   std::deque<output_type> buf_;
@@ -149,6 +161,7 @@ public:
 
   using super = hot<output_type>;
 
+  // cppcheck-suppress noExplicitConstructor
   from_generator(coordinator* parent, Generator gen, std::tuple<Steps...> steps)
     : super(parent), gen_(std::move(gen)), steps_(std::move(steps)) {
     // nop

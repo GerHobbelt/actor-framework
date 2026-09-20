@@ -8,6 +8,7 @@
 #include "caf/detail/core_export.hpp"
 #include "caf/error_code_enum.hpp"
 #include "caf/typed_actor_pack.hpp"
+#include "caf/weak_intrusive_ptr_traits.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -352,7 +353,6 @@ class manager;
 
 namespace detail {
 
-struct make_actor_util;
 struct meta_object;
 
 class abstract_worker;
@@ -361,7 +361,6 @@ class actor_system_access;
 class actor_system_config_access;
 class asynchronous_logger;
 class disposer;
-class dynamic_message_data;
 class mailbox_factory;
 class message_data;
 class private_thread;
@@ -369,22 +368,23 @@ class response_promise_state;
 class stream_bridge;
 class stream_bridge_sub;
 
-// enable intrusive_cow_ptr<dynamic_message_data> with forward declaration only
-CAF_CORE_EXPORT void intrusive_ptr_add_ref(const dynamic_message_data*);
-CAF_CORE_EXPORT void intrusive_ptr_release(const dynamic_message_data*);
-CAF_CORE_EXPORT dynamic_message_data*
-intrusive_cow_ptr_unshare(dynamic_message_data*&);
-
 using global_meta_objects_guard_type = intrusive_ptr<ref_counted>;
 
 } // namespace detail
 
 // -- weak pointer aliases -----------------------------------------------------
 
+template <>
+struct weak_intrusive_ptr_traits<actor_control_block> {
+  using managed_type = abstract_actor;
+  using control_block_type = actor_control_block;
+};
+
 using weak_actor_ptr = weak_intrusive_ptr<actor_control_block>;
 
 // -- intrusive pointer aliases ------------------------------------------------
 
+using resumable_ptr = intrusive_ptr<resumable>;
 using strong_actor_ptr = intrusive_ptr<actor_control_block>;
 
 // -- unique pointer aliases ---------------------------------------------------

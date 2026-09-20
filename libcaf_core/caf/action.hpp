@@ -7,7 +7,7 @@
 #include "caf/allowed_unsafe_message_type.hpp"
 #include "caf/config.hpp"
 #include "caf/detail/assert.hpp"
-#include "caf/detail/atomic_ref_counted.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/disposable.hpp"
 #include "caf/make_counted.hpp"
@@ -35,11 +35,13 @@ public:
   /// Internal interface of `action`.
   class CAF_CORE_EXPORT impl : public disposable::impl, public resumable {
   public:
+    virtual ~impl() noexcept override;
+
+    void ref() const noexcept override = 0; // disambiguation
+
+    void deref() const noexcept override = 0; // disambiguation
+
     virtual state current_state() const noexcept = 0;
-
-    void ref_resumable() const noexcept final;
-
-    void deref_resumable() const noexcept final;
   };
 
   using impl_ptr = intrusive_ptr<impl>;
@@ -143,10 +145,9 @@ inline bool operator!=(const action& lhs, const action& rhs) noexcept {
 namespace caf::detail {
 
 template <class F, bool IsSingleShot>
-class default_action_impl : public detail::atomic_ref_counted,
-                            public action::impl {
+class default_action_impl : public action::impl {
 public:
-  default_action_impl(F fn)
+  explicit default_action_impl(F fn)
     : state_(action::state::scheduled), f_(std::move(fn)) {
     // nop
   }
@@ -225,23 +226,20 @@ public:
     }
   }
 
-  void ref_disposable() const noexcept override {
-    ref();
+  void ref() const noexcept override {
+    ref_count_.inc();
   }
 
-  void deref_disposable() const noexcept override {
-    deref();
+  void deref() const noexcept override {
+    ref_count_.dec(this);
   }
 
-  friend void intrusive_ptr_add_ref(const default_action_impl* ptr) noexcept {
-    ptr->ref();
-  }
-
-  friend void intrusive_ptr_release(const default_action_impl* ptr) noexcept {
-    ptr->deref();
+  size_t strong_reference_count() const noexcept {
+    return ref_count_.value();
   }
 
 private:
+  mutable detail::atomic_ref_count ref_count_;
   std::atomic<action::state> state_;
   union {
     F f_;

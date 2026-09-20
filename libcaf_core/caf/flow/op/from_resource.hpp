@@ -5,7 +5,7 @@
 #pragma once
 
 #include "caf/async/consumer.hpp"
-#include "caf/detail/atomic_ref_counted.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/detail/scope_guard.hpp"
 #include "caf/disposable.hpp"
 #include "caf/flow/observer.hpp"
@@ -20,8 +20,7 @@ namespace caf::flow::op {
 
 /// Reads from an observable buffer and emits the consumed items.
 template <class Buffer>
-class from_resource_sub : public detail::atomic_ref_counted,
-                          public subscription::impl,
+class from_resource_sub : public subscription::impl,
                           public disposable::impl,
                           public async::consumer {
 public:
@@ -36,11 +35,11 @@ public:
   from_resource_sub(coordinator* parent, buffer_ptr buf,
                     observer<value_type> out)
     : parent_(parent, add_ref), buf_(buf), out_(std::move(out)) {
-    parent_->ref_execution_context();
+    parent_->ref();
   }
 
   ~from_resource_sub() override {
-    parent_->deref_execution_context();
+    parent_->deref();
   }
 
   // -- implementation of subscription_impl ------------------------------------
@@ -105,36 +104,16 @@ public:
 
   // -- intrusive_ptr interface ------------------------------------------------
 
-  friend void intrusive_ptr_add_ref(const from_resource_sub* ptr) noexcept {
-    ptr->ref();
+  void ref() const noexcept final {
+    ref_count_.inc();
   }
 
-  friend void intrusive_ptr_release(const from_resource_sub* ptr) noexcept {
-    ptr->deref();
+  void deref() const noexcept final {
+    ref_count_.dec(this);
   }
 
-  void ref_consumer() const noexcept override {
-    this->ref();
-  }
-
-  void deref_consumer() const noexcept override {
-    this->deref();
-  }
-
-  void ref_disposable() const noexcept override {
-    this->ref();
-  }
-
-  void deref_disposable() const noexcept override {
-    this->deref();
-  }
-
-  void ref_coordinated() const noexcept override {
-    this->ref();
-  }
-
-  void deref_coordinated() const noexcept override {
-    this->deref();
+  size_t strong_reference_count() const noexcept {
+    return ref_count_.value();
   }
 
 private:
@@ -191,6 +170,8 @@ private:
   intrusive_ptr<from_resource_sub> strong_this() {
     return {this, add_ref};
   }
+
+  mutable detail::atomic_ref_count ref_count_;
 
   /// Stores the @ref coordinator that runs this flow. Unlike other observables,
   /// we need a strong reference to the coordinator because otherwise the buffer

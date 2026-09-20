@@ -6,7 +6,7 @@
 
 #include "caf/defaults.hpp"
 #include "caf/detail/assert.hpp"
-#include "caf/detail/plain_ref_counted.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/detail/scope_guard.hpp"
 #include "caf/detail/type_list.hpp"
 #include "caf/flow/observer.hpp"
@@ -54,6 +54,7 @@ public:
 
   // -- constructors, destructors, and assignment operators --------------------
 
+  // cppcheck-suppress noExplicitConstructor
   from_steps_sub(coordinator* parent, observer<output_type> out,
                  std::tuple<Steps...> steps)
     : parent_(parent), out_(std::move(out)), steps_(std::move(steps)) {
@@ -62,20 +63,12 @@ public:
 
   // -- ref counting -----------------------------------------------------------
 
-  void ref_coordinated() const noexcept final {
-    this->ref();
+  void ref() const noexcept final {
+    ref_count_.inc();
   }
 
-  void deref_coordinated() const noexcept final {
-    this->deref();
-  }
-
-  friend void intrusive_ptr_add_ref(const from_steps_sub* ptr) noexcept {
-    ptr->ref();
-  }
-
-  friend void intrusive_ptr_release(const from_steps_sub* ptr) noexcept {
-    ptr->deref();
+  void deref() const noexcept final {
+    ref_count_.dec(this);
   }
 
   // -- properties -------------------------------------------------------------
@@ -222,6 +215,7 @@ private:
     return {this, add_ref};
   }
 
+  mutable detail::atomic_ref_count ref_count_;
   coordinator* parent_;
   subscription in_;
   observer<output_type> out_;
@@ -249,6 +243,7 @@ public:
 
   // -- constructors, destructors, and assignment operators --------------------
 
+  // cppcheck-suppress noExplicitConstructor
   from_steps(coordinator* parent, intrusive_ptr<base<input_type>> input,
              std::tuple<Steps...> steps)
     : super(parent), input_(std::move(input)), steps_(std::move(steps)) {

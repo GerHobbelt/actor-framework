@@ -11,6 +11,7 @@
 #include "caf/io/network/native_socket.hpp"
 #include "caf/io/network/protocol.hpp"
 
+#include "caf/adopt_ref.hpp"
 #include "caf/detail/io_export.hpp"
 #include "caf/expected.hpp"
 #include "caf/extend.hpp"
@@ -75,13 +76,6 @@ public:
                          bool reuse_addr = false)
     = 0;
 
-  /// Simple wrapper for runnables
-  class CAF_IO_EXPORT runnable : public resumable, public ref_counted {
-  public:
-    void ref_resumable() const noexcept final;
-    void deref_resumable() const noexcept final;
-  };
-
   /// Makes sure the multiplier does not exit its event loop until
   /// the destructor of `supervisor` has been called.
   class CAF_IO_EXPORT supervisor {
@@ -124,17 +118,26 @@ public:
   /// @threadsafe
   template <class F>
   void post(F fun) {
-    struct impl : runnable {
+    struct impl : resumable {
+      mutable detail::atomic_ref_count ref_count;
       F f;
-      impl(F&& mf) : f(std::move(mf)) {
+      explicit impl(F&& mf) : f(std::move(mf)) {
+        // nop
       }
       void resume(scheduler*, uint64_t event_id) override {
         if (event_id != resumable::dispose_event_id) {
           f();
         }
       }
+      void ref() const noexcept final {
+        ref_count.inc();
+      }
+      void deref() const noexcept final {
+        ref_count.dec(this);
+      }
     };
-    delay(new impl(std::move(fun)), resumable::default_event_id);
+    delay(resumable_ptr{new impl(std::move(fun)), adopt_ref},
+          resumable::default_event_id);
   }
 
   /// Retrieves a pointer to the implementation or `nullptr` if CAF was

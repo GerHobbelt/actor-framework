@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "caf/detail/atomic_ref_counted.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/flow/observer.hpp"
 #include "caf/flow/op/base.hpp"
 #include "caf/flow/subscription.hpp"
@@ -13,22 +13,12 @@ namespace caf::flow::op {
 
 /// Convenience base type for *hot* observable types.
 template <class T>
-class hot : public detail::atomic_ref_counted, public base<T> {
+class hot : public base<T> {
 public:
   // -- constructors, destructors, and assignment operators --------------------
 
   explicit hot(coordinator* parent) : parent_(parent) {
     // nop
-  }
-
-  // -- implementation of disposable_impl --------------------------------------
-
-  void ref_coordinated() const noexcept override {
-    this->ref();
-  }
-
-  void deref_coordinated() const noexcept override {
-    this->deref();
   }
 
   // -- implementation of observable_impl<T> -----------------------------------

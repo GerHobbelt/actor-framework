@@ -5,6 +5,7 @@
 #pragma once
 
 #include "caf/detail/assert.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/flow/gen/from_container.hpp"
 #include "caf/flow/gen/just.hpp"
 #include "caf/flow/observer.hpp"
@@ -118,20 +119,12 @@ public:
 
   // -- reference counting -----------------------------------------------------
 
-  void ref_coordinated() const noexcept final {
-    ref();
+  void ref() const noexcept final {
+    ref_count_.inc();
   }
 
-  void deref_coordinated() const noexcept final {
-    deref();
-  }
-
-  friend void intrusive_ptr_add_ref(const merge_sub* ptr) noexcept {
-    ptr->ref();
-  }
-
-  friend void intrusive_ptr_release(const merge_sub* ptr) noexcept {
-    ptr->deref();
+  void deref() const noexcept final {
+    ref_count_.dec(this);
   }
 
   // -- callbacks for the forwarders -------------------------------------------
@@ -284,14 +277,6 @@ private:
     }
   }
 
-  void do_ref() override {
-    this->ref();
-  }
-
-  void do_deref() override {
-    this->deref();
-  }
-
   void stop_inputs() {
     auto i = inputs_.begin();
     while (i != inputs_.end()) {
@@ -338,6 +323,8 @@ private:
       pos_ = result->first;
     return result;
   }
+
+  mutable detail::atomic_ref_count ref_count_;
 
   /// Stores the context (coordinator) that runs this flow.
   coordinator* parent_;

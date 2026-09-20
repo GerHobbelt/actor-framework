@@ -16,6 +16,7 @@
 #include "caf/detail/actor_system_config_access.hpp"
 #include "caf/detail/actor_system_impl.hpp"
 #include "caf/detail/assert.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/detail/critical.hpp"
 #include "caf/detail/daemons.hpp"
 #include "caf/detail/default_mailbox.hpp"
@@ -112,8 +113,7 @@ void drop_events(deterministic::events_list& events) {
   }
 }
 
-class deterministic_mailbox final : public ref_counted,
-                                    public abstract_mailbox {
+class deterministic_mailbox final : public abstract_mailbox {
 public:
   deterministic_mailbox(events_list_ptr events, local_actor* owner)
     : events_(std::move(events)), owner_(owner) {
@@ -133,8 +133,8 @@ public:
     //       `schedule`. Hence, we always return success here to make sure the
     //       actor never touches the scheduler.
     using event_t = deterministic::scheduling_event;
-    auto event = std::make_unique<event_t>(owner_->as_resumable(),
-                                           std::move(ptr));
+    auto event = std::make_unique<event_t>(
+      resumable_ptr{owner_->as_resumable(), add_ref}, std::move(ptr));
     events_->push_back(std::move(event));
     // Never return unblocked_reader: the fixture drives execution by
     // dispatching from the events list. If we reported unblocked_reader, the
@@ -144,8 +144,8 @@ public:
 
   void push_front(mailbox_element_ptr ptr) override {
     using event_t = deterministic::scheduling_event;
-    auto event = std::make_unique<event_t>(owner_->as_resumable(),
-                                           std::move(ptr));
+    auto event = std::make_unique<event_t>(
+      resumable_ptr{owner_->as_resumable(), add_ref}, std::move(ptr));
     events_->emplace_front(std::move(event));
   }
 
@@ -173,6 +173,11 @@ public:
     return true;
   }
 
+  bool close_if_blocked() override {
+    closed_ = true;
+    return true;
+  }
+
   size_t close() override {
     closed_ = true;
     auto result = size_t{0};
@@ -190,15 +195,16 @@ public:
     return mail_count(*events_, owner_);
   }
 
-  void ref_mailbox() const noexcept override {
-    ref();
+  void ref() const noexcept final {
+    ref_count_.inc();
   }
 
-  void deref_mailbox() const noexcept override {
-    deref();
+  void deref() const noexcept final {
+    ref_count_.dec(this);
   }
 
 private:
+  mutable detail::atomic_ref_count ref_count_;
   bool blocked_ = false;
   bool closed_ = false;
   deterministic::events_list_ptr events_;
@@ -478,16 +484,13 @@ public:
     // nop
   }
 
-  void schedule(resumable* ptr, uint64_t) override {
+  void schedule(resumable_ptr job, uint64_t) override {
     using event_t = deterministic::scheduling_event;
-    events_->push_back(std::make_unique<event_t>(ptr, nullptr));
-    // Before calling this function, CAF *always* bumps the reference count.
-    // Hence, we need to release one reference count here.
-    intrusive_ptr_release(ptr);
+    events_->push_back(std::make_unique<event_t>(std::move(job), nullptr));
   }
 
-  void delay(resumable* what, uint64_t event_id) override {
-    schedule(what, event_id);
+  void delay(resumable_ptr what, uint64_t event_id) override {
+    schedule(std::move(what), event_id);
   }
 
   void start() override {
@@ -692,6 +695,10 @@ public:
   }
 
   void message_rejected(abstract_actor*) override {
+    // nop for test impl
+  }
+
+  void max_throughput_reached(abstract_actor*) override {
     // nop for test impl
   }
 

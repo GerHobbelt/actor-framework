@@ -5,13 +5,14 @@
 #include "caf/scheduled_actor.hpp"
 
 #include "caf/action.hpp"
-#include "caf/actor_registry.hpp"
 #include "caf/actor_system_config.hpp"
+#include "caf/add_ref.hpp"
 #include "caf/anon_mail.hpp"
 #include "caf/config.hpp"
 #include "caf/defaults.hpp"
 #include "caf/detail/actor_system_access.hpp"
 #include "caf/detail/assert.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/detail/critical.hpp"
 #include "caf/detail/current_actor.hpp"
 #include "caf/detail/default_invoke_result_visitor.hpp"
@@ -20,7 +21,6 @@
 #include "caf/detail/private_thread.hpp"
 #include "caf/detail/sync_request_bouncer.hpp"
 #include "caf/flow/observable_builder.hpp"
-#include "caf/flow/op/mcast.hpp"
 #include "caf/format_to_error.hpp"
 #include "caf/log/core.hpp"
 #include "caf/log/system.hpp"
@@ -28,7 +28,6 @@
 #include "caf/scheduler.hpp"
 #include "caf/send.hpp"
 #include "caf/stream.hpp"
-#include "caf/telemetry/metric_family_impl.hpp"
 
 using namespace std::string_literals;
 
@@ -160,7 +159,7 @@ scheduled_actor::~scheduled_actor() {
   if (mailbox_ == &default_mailbox_)
     default_mailbox_.~default_mailbox();
   else
-    mailbox_->deref_mailbox();
+    mailbox_->deref();
 }
 
 // -- overridden functions of abstract_actor -----------------------------------
@@ -193,13 +192,13 @@ bool scheduled_actor::enqueue(mailbox_element_ptr ptr, scheduler* sched) {
   switch (mailbox().push_back(std::move(ptr))) {
     case intrusive::inbox_result::unblocked_reader: {
       CAF_LOG_ACCEPT_EVENT(true);
-      intrusive_ptr_add_ref(ctrl());
       if (private_thread_) {
-        private_thread_->resume(this);
+        private_thread_->resume(resumable_ptr{this, add_ref});
       } else if (use_delay) {
-        sched->delay(this, resumable::default_event_id);
+        sched->delay(resumable_ptr{this, add_ref}, resumable::default_event_id);
       } else {
-        sched->schedule(this, resumable::default_event_id);
+        sched->schedule(resumable_ptr{this, add_ref},
+                        resumable::default_event_id);
       }
       return true;
     }
@@ -267,16 +266,14 @@ void scheduled_actor::launch(detail::private_thread* worker, scheduler* ctx) {
   auto lg = log::core::trace("");
   if (worker) {
     private_thread_ = worker;
-    intrusive_ptr_add_ref(ctrl());
-    private_thread_->resume(this);
+    private_thread_->resume(resumable_ptr{this, add_ref});
     return;
   }
   if (auto* pinned = pinned_scheduler()) {
     ctx = pinned;
   }
   CAF_ASSERT(ctx != nullptr);
-  intrusive_ptr_add_ref(ctrl());
-  ctx->delay(this, resumable::initialization_event_id);
+  ctx->delay(resumable_ptr{this, add_ref}, resumable::initialization_event_id);
 }
 
 void scheduled_actor::on_cleanup(const error& reason) {
@@ -300,15 +297,9 @@ resumable* scheduled_actor::as_resumable() noexcept {
 
 // -- overridden functions of resumable ----------------------------------------
 
-void scheduled_actor::ref_resumable() const noexcept {
-  intrusive_ptr_add_ref(ctrl());
-}
-
-void scheduled_actor::deref_resumable() const noexcept {
-  intrusive_ptr_release(ctrl());
-}
-
 void scheduled_actor::resume(scheduler* sched, uint64_t event_id) {
+  CAF_ASSERT(!private_thread_
+             || private_thread_->id() == std::this_thread::get_id());
   detail::current_actor_guard ctx_guard{this};
   auto lg = log::core::trace("event-id = {}", event_id);
   if (event_id == resumable::dispose_event_id) {
@@ -331,7 +322,8 @@ void scheduled_actor::resume(scheduler* sched, uint64_t event_id) {
       set_receive_timeout();
   };
   mailbox_element_ptr ptr;
-  while (consumed < max_throughput_) {
+  // Note: detached actors ignore the max throughput limit.
+  while (private_thread_ != nullptr || consumed < max_throughput_) {
     auto ptr = mailbox().pop_front();
     if (!ptr) {
       if (mailbox().try_block()) {
@@ -359,15 +351,19 @@ void scheduled_actor::resume(scheduler* sched, uint64_t event_id) {
     if (res == activation_result::terminated)
       return;
   }
+  // Dropping here means we have reached the max throughput limit. Check if we
+  // have messages left in the mailbox and if so, tell the scheduler to run this
+  // actor again.
+  CAF_ASSERT(private_thread_ == nullptr);
   reset_timeouts_if_needed();
   if (mailbox().try_block()) {
     log::core::debug("mailbox empty: await new messages");
     return;
   }
-  // time's up
+  using detail::actor_system_access;
   log::core::debug("max throughput reached: resume later");
-  intrusive_ptr_add_ref(ctrl());
-  sched->delay(this, resumable::default_event_id);
+  actor_system_access{home_system()}.impl()->max_throughput_reached(this);
+  sched->delay(resumable_ptr{this, add_ref}, resumable::default_event_id);
 }
 
 // -- scheduler callbacks ------------------------------------------------------
@@ -502,6 +498,14 @@ public:
     // nop
   }
 
+  void ref() const noexcept override {
+    ref_count_.inc();
+  }
+
+  void deref() const noexcept override {
+    ref_count_.dec(this);
+  }
+
   bool had_error() const noexcept {
     return had_error_;
   }
@@ -524,14 +528,6 @@ public:
   void request(size_t num_items) override {
     if (sub_)
       sub_.request(num_items);
-  }
-
-  void ref_coordinated() const noexcept final {
-    ref();
-  }
-
-  void deref_coordinated() const noexcept final {
-    deref();
   }
 
   bool subscribed() const noexcept {
@@ -564,15 +560,8 @@ public:
       sub.cancel();
   }
 
-  friend void intrusive_ptr_add_ref(const batch_forwarder_impl* ptr) noexcept {
-    ptr->ref();
-  }
-
-  friend void intrusive_ptr_release(const batch_forwarder_impl* ptr) noexcept {
-    ptr->deref();
-  }
-
 private:
+  mutable detail::atomic_ref_count ref_count_;
   scheduled_actor* self_;
   actor sink_hdl_;
   uint64_t sink_flow_id_;
@@ -587,12 +576,12 @@ flow::coordinator::steady_time_point scheduled_actor::steady_time() {
   return clock().now();
 }
 
-void scheduled_actor::ref_execution_context() const noexcept {
-  intrusive_ptr_add_ref(ctrl());
+void scheduled_actor::ref() const noexcept {
+  ctrl()->ref();
 }
 
-void scheduled_actor::deref_execution_context() const noexcept {
-  intrusive_ptr_release(ctrl());
+void scheduled_actor::deref() const noexcept {
+  ctrl()->deref();
 }
 
 void scheduled_actor::schedule(action what) {
@@ -1246,8 +1235,22 @@ void scheduled_actor::close_mailbox() {
     metrics_.mailbox_size->dec(static_cast<int64_t>(dropped));
 }
 
-void scheduled_actor::force_close_mailbox() {
-  close_mailbox();
+bool scheduled_actor::try_force_close_mailbox() {
+  if (mailbox().close_if_blocked()) {
+    // Discard everything in the stash.
+    auto dropped = 0;
+    detail::sync_request_bouncer bounce;
+    while (auto stashed = stash_.pop()) {
+      mailbox_element_ptr ptr{stashed};
+      bounce(*ptr);
+      ++dropped;
+    }
+    if (dropped > 0 && metrics_.mailbox_size) {
+      metrics_.mailbox_size->dec(dropped);
+    }
+    return true;
+  }
+  return false;
 }
 
 // -- monitoring ---------------------------------------------------------------

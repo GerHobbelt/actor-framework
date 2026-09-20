@@ -5,14 +5,13 @@
 #pragma once
 
 #include "caf/detail/assert.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/detail/core_export.hpp"
-#include "caf/detail/plain_ref_counted.hpp"
 #include "caf/disposable.hpp"
 #include "caf/flow/coordinated.hpp"
 #include "caf/flow/coordinator.hpp"
 #include "caf/flow/fwd.hpp"
 #include "caf/intrusive_ptr.hpp"
-#include "caf/ref_counted.hpp"
 
 #include <cstddef>
 #include <type_traits>
@@ -45,31 +44,16 @@ public:
     virtual void request(size_t n) = 0;
   };
 
-  /// Simple base type for all subscription implementations that implements the
-  /// reference counting member functions.
-  class CAF_CORE_EXPORT impl_base : public detail::plain_ref_counted,
-                                    public impl,
-                                    public disposable_impl {
+  /// Base type for subscriptions that also implement the disposable interface.
+  class CAF_CORE_EXPORT impl_base : public impl, public disposable_impl {
   public:
-    void ref_disposable() const noexcept override;
+    void ref() const noexcept override = 0; // disambiguation
 
-    void deref_disposable() const noexcept override;
-
-    void ref_coordinated() const noexcept override;
-
-    void deref_coordinated() const noexcept override;
+    void deref() const noexcept override = 0; // disambiguation
 
     void dispose() final;
 
     void cancel() final;
-
-    friend void intrusive_ptr_add_ref(const impl_base* ptr) noexcept {
-      ptr->ref();
-    }
-
-    friend void intrusive_ptr_release(const impl_base* ptr) noexcept {
-      ptr->deref();
-    }
 
   private:
     /// Called either from an event to safely dispose the subscription or from
@@ -139,9 +123,18 @@ public:
       return subscription{std::move(ptr)};
     }
 
+    void ref() const noexcept final {
+      ref_count_.inc();
+    }
+
+    void deref() const noexcept final {
+      ref_count_.dec(this);
+    }
+
   private:
     void do_dispose(bool from_external) override;
 
+    mutable detail::atomic_ref_count ref_count_;
     coordinator* parent_;
     intrusive_ptr<listener> src_;
     intrusive_ptr<coordinated> snk_;
@@ -153,6 +146,10 @@ public:
       // nop
     }
 
+    void ref() const noexcept final;
+
+    void deref() const noexcept final;
+
     coordinator* parent() const noexcept override;
 
     bool disposed() const noexcept override;
@@ -162,6 +159,7 @@ public:
   private:
     void do_dispose(bool from_external) override;
 
+    mutable detail::atomic_ref_count ref_count_;
     coordinator* parent_;
     bool disposed_ = false;
   };

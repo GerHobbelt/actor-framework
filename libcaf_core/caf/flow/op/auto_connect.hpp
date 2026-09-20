@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "caf/detail/atomic_ref_counted.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/disposable.hpp"
 #include "caf/error.hpp"
 #include "caf/flow/observer.hpp"
@@ -122,8 +122,7 @@ using auto_connect_state_ptr = std::shared_ptr<auto_connect_state<T>>;
 /// Acts as intermediate between the source observable and the observer. Injects
 /// additional bookkeeping for the auto-connect operator.
 template <class T>
-class auto_connect_subscription : public detail::atomic_ref_counted,
-                                  public subscription_impl,
+class auto_connect_subscription : public subscription_impl,
                                   public observer_impl<T>,
                                   public disposable_impl {
 public:
@@ -227,33 +226,17 @@ public:
 
   // -- reference counting -----------------------------------------------------
 
-  void ref_coordinated() const noexcept override {
-    ref();
+  void ref() const noexcept final {
+    ref_count_.inc();
   }
 
-  void deref_coordinated() const noexcept override {
-    deref();
-  }
-
-  void ref_disposable() const noexcept override {
-    ref();
-  }
-
-  void deref_disposable() const noexcept override {
-    deref();
-  }
-
-  friend void
-  intrusive_ptr_add_ref(const auto_connect_subscription* ptr) noexcept {
-    ptr->ref();
-  }
-
-  friend void
-  intrusive_ptr_release(const auto_connect_subscription* ptr) noexcept {
-    ptr->deref();
+  void deref() const noexcept final {
+    ref_count_.dec(this);
   }
 
 private:
+  mutable detail::atomic_ref_count ref_count_;
+
   /// The parent coordinator.
   coordinator* parent_;
 
@@ -273,7 +256,7 @@ private:
 /// Turns a connectable into an observable that automatically connects to the
 /// source when reaching the subscriber threshold.
 template <class T>
-class auto_connect : public base<T>, public detail::atomic_ref_counted {
+class auto_connect : public base<T> {
 public:
   using super = base<T>;
 
@@ -340,12 +323,12 @@ public:
     return ptr->as_disposable();
   }
 
-  void ref_coordinated() const noexcept override {
-    this->ref();
+  void ref() const noexcept final {
+    ref_count_.inc();
   }
 
-  void deref_coordinated() const noexcept override {
-    this->deref();
+  void deref() const noexcept final {
+    ref_count_.dec(this);
   }
 
   size_t pending_subscriptions_count() const {
@@ -362,6 +345,8 @@ public:
 
 protected:
   using subscription_type = auto_connect_subscription<T>;
+
+  mutable detail::atomic_ref_count ref_count_;
 
   /// The parent coordinator.
   coordinator* parent_;

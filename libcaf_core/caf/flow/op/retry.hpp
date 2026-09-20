@@ -6,6 +6,7 @@
 
 #include "caf/config.hpp"
 #include "caf/detail/assert.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/flow/observer.hpp"
 #include "caf/flow/op/hot.hpp"
 #include "caf/flow/subscription.hpp"
@@ -49,14 +50,6 @@ public:
 
   // -- implementation of observer_impl ----------------------------------------
 
-  void ref_coordinated() const noexcept override {
-    ref();
-  }
-
-  void deref_coordinated() const noexcept override {
-    deref();
-  }
-
   void on_subscribe(subscription sub) override {
     if (sub_) {
       sub.cancel();
@@ -93,6 +86,16 @@ public:
     }
   }
 
+  // -- reference counting -----------------------------------------------------
+
+  void ref() const noexcept final {
+    ref_count_.inc();
+  }
+
+  void deref() const noexcept final {
+    ref_count_.dec(this);
+  }
+
 private:
   void do_dispose(bool from_external) override {
     if (!out_)
@@ -110,6 +113,8 @@ private:
       return;
     in_.subscribe(this->as_observer());
   }
+
+  mutable detail::atomic_ref_count ref_count_;
 
   // Stores the pending demand. When re-subscribing, we transfer the demand to
   // the new subscription.

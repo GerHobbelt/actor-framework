@@ -36,8 +36,6 @@ class remote_message_handler;
 
 namespace caf {
 
-CAF_CORE_EXPORT void intrusive_ptr_release(actor_control_block*);
-
 /// A unique actor ID.
 /// @relates abstract_actor
 using actor_id = uint64_t;
@@ -50,12 +48,16 @@ class CAF_CORE_EXPORT abstract_actor {
 public:
   // -- friends ----------------------------------------------------------------
 
+  friend class actor_control_block;
+
   template <class>
   friend class caf::io::basp::remote_message_handler;
 
-  friend CAF_CORE_EXPORT void intrusive_ptr_release(actor_control_block*);
-
   // -- constructors, destructors, and assignment operators --------------------
+
+  /// @note calls `detail::current_actor(this)`; re-setting the current actor
+  ///       needs to be done by the outer scope
+  explicit abstract_actor(actor_config& cfg);
 
   virtual ~abstract_actor();
 
@@ -304,13 +306,6 @@ protected:
     return getf(is_terminated_flag);
   }
 
-  // -- constructors, destructors, and assignment operators --------------------
-
-  /// @note calls `detail::current_actor(this)`; re-setting the current actor
-  ///       needs to be done by the outer scope (usually taken care of by
-  ///       `detail::make_actor_util`)
-  explicit abstract_actor(actor_config& cfg);
-
   // -- attachables ------------------------------------------------------------
 
   // precondition: `mtx_` is acquired
@@ -323,10 +318,10 @@ protected:
   // -- linking ----------------------------------------------------------------
 
   /// Causes the actor to establish a link to `other`.
-  void add_link(abstract_actor* other);
+  virtual void add_link(abstract_actor* other);
 
   /// Causes the actor to remove any established link to `other`.
-  void remove_link(abstract_actor* other);
+  virtual void remove_link(abstract_actor* other);
 
   /// Adds an entry to `other` to the link table of this actor.
   /// @warning Must be called inside a critical section, i.e.,
@@ -357,11 +352,10 @@ protected:
   attachable_ptr attachables_head_;
 
 private:
-  /// Forces the actor to close its mailbox and drop all messages. The only
-  /// place calling this member function is
-  /// `intrusive_ptr_release(actor_control_block*)` before calling
-  /// `on_unreachable`.
-  virtual void force_close_mailbox() = 0;
+  /// Tries to transition the mailbox from a blocked state to a closed state.
+  /// Called from the actor control block before attempting to call the
+  /// destructor for the actor.
+  virtual bool try_force_close_mailbox() = 0;
 };
 
 } // namespace caf
