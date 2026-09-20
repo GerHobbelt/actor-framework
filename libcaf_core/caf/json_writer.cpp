@@ -191,10 +191,10 @@ public:
           push(internal::json_node::member);
           return true;
         default: {
-          std::string str = "expected object, found ";
-          str += as_json_type_name(t);
+          std::string err_msg = "expected object, found ";
+          err_msg += as_json_type_name(t);
           err_ = format_to_error(sec::runtime_error, "{}::{}: {}", class_name,
-                                 __func__, str);
+                                 __func__, err_msg);
           return false;
         }
       }
@@ -274,10 +274,10 @@ public:
         push(internal::json_node::key);
         return true;
       default: {
-        std::string str = "expected object, found ";
-        str += as_json_type_name(t);
+        std::string err_msg = "expected object, found ";
+        err_msg += as_json_type_name(t);
         err_ = format_to_error(sec::runtime_error, "{}::{}: {}", class_name,
-                               __func__, std::move(str));
+                               __func__, std::move(err_msg));
         return false;
       }
     }
@@ -586,28 +586,6 @@ private:
     return false;
   }
 
-  // Backs up one level of nesting but checks that the top is `t` afterwards.
-  bool pop_if_next(internal::json_node t) {
-    if (stack_.size() > 1
-        && (stack_[stack_.size() - 2] == t
-            || can_morph(stack_[stack_.size() - 2].t, t))) {
-      stack_.pop_back();
-      return true;
-    }
-    if (stack_.size() < 2) {
-      err_ = format_to_error(sec::runtime_error,
-                             "pop_if_next failed: expected {} "
-                             "but found a stack of size",
-                             as_json_type_name(t), stack_.size());
-    } else {
-      err_ = format_to_error(sec::runtime_error,
-                             "pop_if_next failed: expected {} but found {}",
-                             as_json_type_name(t),
-                             as_json_type_name(stack_[stack_.size() - 2].t));
-    }
-    return false;
-  }
-
   // Tries to morph the current top of the stack to t.
   bool morph(internal::json_node t) {
     internal::json_node unused;
@@ -623,15 +601,15 @@ private:
         stack_.back().t = t;
         return true;
       }
-      std::string str = "cannot convert ";
-      str += as_json_type_name(stack_.back().t);
-      str += " to ";
-      str += as_json_type_name(t);
-      err_ = make_error(sec::runtime_error, std::move(str));
+      std::string err_msg = "cannot convert ";
+      err_msg += as_json_type_name(stack_.back().t);
+      err_msg += " to ";
+      err_msg += as_json_type_name(t);
+      err_ = make_error(sec::runtime_error, std::move(err_msg));
       return false;
     }
-    std::string str = "mismatched begin/end calls on the JSON inspector";
-    err_ = make_error(sec::runtime_error, std::move(str));
+    std::string err_msg = "mismatched begin/end calls on the JSON inspector";
+    err_ = make_error(sec::runtime_error, std::move(err_msg));
     return false;
   }
 
