@@ -8,6 +8,7 @@
 #include "caf/detail/squashed_int.hpp"
 #include "caf/fwd.hpp"
 #include "caf/load_inspector_base.hpp"
+#include "caf/sec.hpp"
 #include "caf/type_id.hpp"
 
 #include <concepts>
@@ -32,9 +33,6 @@ public:
   ~deserializer() override;
 
   // -- properties -------------------------------------------------------------
-
-  /// Returns the actor system associated with this deserializer if available.
-  virtual caf::actor_system* sys() const noexcept = 0;
 
   /// Returns whether the serialization format is human-readable.
   virtual bool has_human_readable_format() const noexcept = 0;
@@ -184,18 +182,28 @@ public:
   /// @returns A non-zero error code on failure, `sec::success` otherwise.
   virtual bool value(byte_span x) = 0;
 
-  /// @copydoc value
-  virtual bool value(strong_actor_ptr& ptr);
+  /// Reads the vector of booleans from the input.
+  virtual bool value(std::vector<bool>& x);
+
+  // Announce special handling of `vector<bool>` to the inspection API.
+  bool builtin_inspect(std::vector<bool>& x) {
+    return value(x);
+  }
 
   /// @copydoc value
-  virtual bool value(weak_actor_ptr& ptr);
+  bool value(strong_actor_ptr& ptr);
 
-  using super::list;
+  /// @copydoc value
+  bool value(weak_actor_ptr& ptr);
 
-  /// Adds each boolean in `xs` to the output. Derived classes can override this
-  /// member function to pack the booleans, for example to avoid using one
-  /// byte for each value in a binary output format.
-  virtual bool list(std::vector<bool>& xs);
+  virtual caf::actor_handle_codec* actor_handle_codec() = 0;
+
+  /// Returns a reference to the deserializer. Convenience member function for
+  /// compatibility with other deserializer types that expose the implementation
+  /// object via this getter.
+  deserializer& as_deserializer() noexcept {
+    return *this;
+  }
 };
 
 } // namespace caf

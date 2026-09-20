@@ -22,18 +22,8 @@ bool do_save(const detail::meta_object& meta, serializer& sink,
   return meta.save(sink, ptr);
 }
 
-bool do_save(const detail::meta_object& meta, binary_serializer& sink,
-             const void* ptr) {
-  return meta.save_binary(sink, ptr);
-}
-
 bool do_load(const detail::meta_object& meta, deserializer& sink, void* ptr) {
   return meta.load(sink, ptr);
-}
-
-bool do_load(const detail::meta_object& meta, binary_deserializer& sink,
-             void* ptr) {
-  return meta.load_binary(sink, ptr);
 }
 
 void dynamic_item_destructor(type_id_t item_type, size_t item_size,
@@ -81,7 +71,7 @@ bool batch::data::save(Inspector& sink) const {
     return false;
   auto len = size_;
   do {
-    if (!do_save(*meta, sink, ptr))
+    if (!do_save(*meta, sink.as_serializer(), ptr))
       return false;
     ptr += item_size_;
     --len;
@@ -197,7 +187,7 @@ bool batch::load(deserializer& f) {
 }
 
 bool batch::load(binary_deserializer& f) {
-  return load_impl(f);
+  return load_impl(f.as_deserializer());
 }
 
 } // namespace caf::async

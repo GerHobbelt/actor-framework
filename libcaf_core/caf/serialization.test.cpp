@@ -11,6 +11,7 @@
 #include "caf/binary_serializer.hpp"
 #include "caf/config_value_reader.hpp"
 #include "caf/config_value_writer.hpp"
+#include "caf/detail/default_actor_handle_codec.hpp"
 #include "caf/init_global_meta_objects.hpp"
 #include "caf/json_reader.hpp"
 #include "caf/json_writer.hpp"
@@ -399,26 +400,29 @@ using deserializer_ptr = std::variant<std::shared_ptr<binary_deserializer>,
 
 struct binary_serializer_wrapper {
   byte_buffer buffer;
+  detail::default_actor_handle_codec codec;
   binary_serializer sink;
 
-  explicit binary_serializer_wrapper(actor_system& sys) : sink(sys, buffer) {
+  explicit binary_serializer_wrapper(actor_system& sys)
+    : codec(sys), sink(buffer, &codec) {
     // nop
   }
 
   deserializer_ptr make_deserializer() {
-    return std::make_shared<binary_deserializer>(*sink.context(), buffer);
+    return std::make_shared<binary_deserializer>(buffer, &codec);
   }
 };
 
 struct json_writer_wrapper {
+  detail::default_actor_handle_codec codec;
   json_writer sink;
 
-  explicit json_writer_wrapper(actor_system& sys) : sink(sys) {
+  explicit json_writer_wrapper(actor_system& sys) : codec(sys), sink(&codec) {
     // nop
   }
 
   deserializer_ptr make_deserializer() {
-    auto reader = std::make_shared<json_reader>(*sink.sys());
+    auto reader = std::make_shared<json_reader>(&codec);
     if (!reader->load(sink.str())) {
       test::runnable::current().fail("failed to load JSON: {}",
                                      reader->get_error());
@@ -878,49 +882,53 @@ OUTLINE("serializing a type that initializes members to a non-empty state") {
   )_";
 }
 
-// TODO: update tests to use apply instead of value overload
 SCENARIO("binary serializer and deserializer handle vectors of booleans") {
   GIVEN("a binary serializer") {
     auto sink = binary_serializer_wrapper{sys};
     WHEN("serializing a vector of booleans with 8 values") {
       auto val = std::vector<bool>{true,  false, true, true,
                                    false, false, true, false};
-      check(sink.sink.value(val));
-      THEN("deserializing the result produces the value again") {
-        auto source = binary_deserializer{sys, sink.buffer};
+      check(sink.sink.apply(val));
+      THEN("the serialized data is compressed into two bytes") {
+        // Two bytes: one for the varbyte encoding of the size, one for the
+        // packed boolean values.
+        check_eq(sink.buffer.size(), 2u);
+      }
+      AND_THEN("deserializing the result produces the value again") {
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
         auto copy = std::vector<bool>{};
-        check(source.value(copy));
+        check(source.apply(copy));
         check_eq(copy, val);
       }
     }
     WHEN("serializing a vector of boolean with 9 values") {
       auto val = std::vector<bool>{true,  false, true,  true, false,
                                    false, true,  false, true};
-      check(sink.sink.value(val));
+      check(sink.sink.apply(val));
       THEN("deserializing the result produces the value again") {
-        auto source = binary_deserializer{sys, sink.buffer};
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
         auto copy = std::vector<bool>{};
-        check(source.value(copy));
+        check(source.apply(copy));
         check_eq(copy, val);
       }
     }
     WHEN("serializing a vector of boolean with 1 value") {
       auto val = std::vector<bool>{true};
-      check(sink.sink.value(val));
+      check(sink.sink.apply(val));
       THEN("deserializing the result produces the value again") {
-        auto source = binary_deserializer{sys, sink.buffer};
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
         auto copy = std::vector<bool>{};
-        check(source.value(copy));
+        check(source.apply(copy));
         check_eq(copy, val);
       }
     }
     WHEN("serializing an empty vector of boolean") {
       auto val = std::vector<bool>{};
-      check(sink.sink.value(val));
+      check(sink.sink.apply(val));
       THEN("deserializing the result produces the value again") {
-        auto source = binary_deserializer{sys, sink.buffer};
+        auto source = binary_deserializer{sink.buffer, &sink.codec};
         auto copy = std::vector<bool>{};
-        check(source.value(copy));
+        check(source.apply(copy));
         check_eq(copy, val);
       }
     }

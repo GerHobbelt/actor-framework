@@ -5,6 +5,7 @@
 #include "caf/json_writer.hpp"
 
 #include "caf/actor_control_block.hpp"
+#include "caf/actor_handle_codec.hpp"
 #include "caf/byte_span.hpp"
 #include "caf/detail/append_hex.hpp"
 #include "caf/detail/assert.hpp"
@@ -39,15 +40,15 @@ char last_non_ws_char(const std::vector<char>& buf) {
 
 namespace caf {
 
-class json_writer::impl : public byte_writer {
+class json_writer_impl : public text_writer {
 public:
   // -- member types -----------------------------------------------------------
 
-  using super = byte_writer;
+  using super = text_writer;
 
   // -- constructors, destructors, and assignment operators --------------------
 
-  impl(actor_system* sys, serializer* parent) : sys_(sys), parent_(parent) {
+  explicit json_writer_impl(caf::actor_handle_codec* codec) : codec_(codec) {
     // Reserve some reasonable storage for the character buffer. JSON grows
     // quickly, so we can start at 1kb to avoid a couple of small allocations in
     // the beginning.
@@ -60,55 +61,51 @@ public:
 
   // -- properties -------------------------------------------------------------
 
-  const_byte_span bytes() const override {
-    return to_const_byte_span(str());
-  }
-
-  [[nodiscard]] std::string_view str() const noexcept {
+  [[nodiscard]] std::string_view str() const noexcept override {
     return {buf_.data(), buf_.size()};
   }
 
-  [[nodiscard]] size_t indentation() const noexcept {
+  [[nodiscard]] size_t indentation() const noexcept override {
     return indentation_factor_;
   }
 
-  void indentation(size_t factor) noexcept {
+  void indentation(size_t factor) noexcept override {
     indentation_factor_ = factor;
   }
 
-  [[nodiscard]] bool compact() const noexcept {
+  [[nodiscard]] bool compact() const noexcept override {
     return indentation_factor_ == 0;
   }
 
-  [[nodiscard]] bool skip_empty_fields() const noexcept {
+  [[nodiscard]] bool skip_empty_fields() const noexcept override {
     return skip_empty_fields_;
   }
 
-  void skip_empty_fields(bool value) noexcept {
+  void skip_empty_fields(bool value) noexcept override {
     skip_empty_fields_ = value;
   }
 
-  [[nodiscard]] bool skip_object_type_annotation() const noexcept {
+  [[nodiscard]] bool skip_object_type_annotation() const noexcept override {
     return skip_object_type_annotation_;
   }
 
-  void skip_object_type_annotation(bool value) noexcept {
+  void skip_object_type_annotation(bool value) noexcept override {
     skip_object_type_annotation_ = value;
   }
 
-  [[nodiscard]] std::string_view field_type_suffix() const noexcept {
+  [[nodiscard]] std::string_view field_type_suffix() const noexcept override {
     return field_type_suffix_;
   }
 
-  void field_type_suffix(std::string_view suffix) noexcept {
+  void field_type_suffix(std::string_view suffix) noexcept override {
     field_type_suffix_ = suffix;
   }
 
-  [[nodiscard]] const type_id_mapper* mapper() const noexcept {
+  [[nodiscard]] const type_id_mapper* mapper() const noexcept override {
     return mapper_;
   }
 
-  void mapper(const type_id_mapper* ptr) noexcept {
+  void mapper(const type_id_mapper* ptr) noexcept override {
     mapper_ = ptr;
   }
 
@@ -128,10 +125,6 @@ public:
 
   error& get_error() noexcept override {
     return err_;
-  }
-
-  caf::actor_system* sys() const noexcept override {
-    return sys_;
   }
 
   bool has_human_readable_format() const noexcept override {
@@ -502,16 +495,8 @@ public:
     }
   }
 
-  bool value(const strong_actor_ptr& ptr) override {
-    // These are customization points for the deserializer. Client code may
-    // inherit from json_writer and override these member functions. Hence, we
-    // need to dispatch to the parent class.
-    return parent_->value(ptr);
-  }
-
-  bool value(const weak_actor_ptr& ptr) override {
-    // Same as above.
-    return parent_->value(ptr);
+  caf::actor_handle_codec* actor_handle_codec() override {
+    return codec_;
   }
 
 private:
@@ -675,9 +660,6 @@ private:
 
   // -- member variables -------------------------------------------------------
 
-  // The actor system this writer belongs to.
-  actor_system* sys_ = nullptr;
-
   // The current level of indentation.
   size_t indentation_level_ = 0;
 
@@ -717,230 +699,18 @@ private:
   /// The last error that occurred.
   error err_;
 
-  serializer* parent_;
+  caf::actor_handle_codec* codec_ = nullptr;
 };
 
 // -- constructors, destructors, and assignment operators ----------------------
 
-json_writer::json_writer() {
-  static_assert(sizeof(impl) <= impl_storage_size);
-  impl_.reset(new (impl_storage_) impl(nullptr, this));
+json_writer::json_writer(caf::actor_handle_codec* codec)
+  : super(new(impl_storage_) json_writer_impl(codec)) {
+  static_assert(sizeof(json_writer_impl) <= impl_storage_size);
 }
 
-json_writer::json_writer(actor_system& sys) {
-  impl_.reset(new (impl_storage_) impl(&sys, this));
-}
-
-json_writer::~json_writer() {
+json_writer::~json_writer() noexcept {
   // nop
-}
-
-// -- properties ---------------------------------------------------------------
-
-const_byte_span json_writer::bytes() const {
-  return impl_->bytes();
-}
-
-std::string_view json_writer::str() const noexcept {
-  return impl_->str();
-}
-
-size_t json_writer::indentation() const noexcept {
-  return impl_->indentation();
-}
-
-void json_writer::indentation(size_t factor) noexcept {
-  impl_->indentation(factor);
-}
-
-bool json_writer::compact() const noexcept {
-  return impl_->compact();
-}
-
-bool json_writer::skip_empty_fields() const noexcept {
-  return impl_->skip_empty_fields();
-}
-
-void json_writer::skip_empty_fields(bool value) noexcept {
-  impl_->skip_empty_fields(value);
-}
-
-bool json_writer::skip_object_type_annotation() const noexcept {
-  return impl_->skip_object_type_annotation();
-}
-
-void json_writer::skip_object_type_annotation(bool value) noexcept {
-  impl_->skip_object_type_annotation(value);
-}
-
-std::string_view json_writer::field_type_suffix() const noexcept {
-  return impl_->field_type_suffix();
-}
-
-void json_writer::field_type_suffix(std::string_view suffix) noexcept {
-  impl_->field_type_suffix(suffix);
-}
-
-const type_id_mapper* json_writer::mapper() const noexcept {
-  return impl_->mapper();
-}
-
-void json_writer::mapper(const type_id_mapper* ptr) noexcept {
-  impl_->mapper(ptr);
-}
-
-// -- modifiers ----------------------------------------------------------------
-
-void json_writer::reset() {
-  impl_->reset();
-}
-
-// -- overrides ----------------------------------------------------------------
-
-void json_writer::set_error(error stop_reason) {
-  impl_->set_error(std::move(stop_reason));
-}
-
-error& json_writer::get_error() noexcept {
-  return impl_->get_error();
-}
-
-caf::actor_system* json_writer::sys() const noexcept {
-  return impl_->sys();
-}
-
-bool json_writer::has_human_readable_format() const noexcept {
-  return impl_->has_human_readable_format();
-}
-
-bool json_writer::begin_object(type_id_t id, std::string_view name) {
-  return impl_->begin_object(id, name);
-}
-
-bool json_writer::end_object() {
-  return impl_->end_object();
-}
-
-bool json_writer::begin_field(std::string_view name) {
-  return impl_->begin_field(name);
-}
-
-bool json_writer::begin_field(std::string_view name, bool is_present) {
-  return impl_->begin_field(name, is_present);
-}
-
-bool json_writer::begin_field(std::string_view name,
-                              std::span<const type_id_t> types, size_t index) {
-  return impl_->begin_field(name, types, index);
-}
-
-bool json_writer::begin_field(std::string_view name, bool is_present,
-                              std::span<const type_id_t> types, size_t index) {
-  return impl_->begin_field(name, is_present, types, index);
-}
-
-bool json_writer::end_field() {
-  return impl_->end_field();
-}
-
-bool json_writer::begin_tuple(size_t size) {
-  return impl_->begin_tuple(size);
-}
-
-bool json_writer::end_tuple() {
-  return impl_->end_tuple();
-}
-
-bool json_writer::begin_key_value_pair() {
-  return impl_->begin_key_value_pair();
-}
-
-bool json_writer::end_key_value_pair() {
-  return impl_->end_key_value_pair();
-}
-
-bool json_writer::begin_sequence(size_t size) {
-  return impl_->begin_sequence(size);
-}
-
-bool json_writer::end_sequence() {
-  return impl_->end_sequence();
-}
-
-bool json_writer::begin_associative_array(size_t size) {
-  return impl_->begin_associative_array(size);
-}
-
-bool json_writer::end_associative_array() {
-  return impl_->end_associative_array();
-}
-
-bool json_writer::value(std::byte x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(bool x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(int8_t x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(uint8_t x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(int16_t x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(uint16_t x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(int32_t x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(uint32_t x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(int64_t x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(uint64_t x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(float x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(double x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(long double x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(std::string_view x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(const std::u16string& x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(const std::u32string& x) {
-  return impl_->value(x);
-}
-
-bool json_writer::value(const_byte_span x) {
-  return impl_->value(x);
 }
 
 } // namespace caf

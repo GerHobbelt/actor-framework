@@ -4,12 +4,11 @@
 
 #pragma once
 
+#include "caf/actor_handle_codec.hpp"
+#include "caf/byte_writer.hpp"
 #include "caf/detail/core_export.hpp"
 #include "caf/fwd.hpp"
-#include "caf/placement_ptr.hpp"
-#include "caf/save_inspector_base.hpp"
 
-#include <concepts>
 #include <cstddef>
 
 namespace caf {
@@ -19,136 +18,47 @@ namespace caf {
 ///       perform any type checking at run-time. Thus the output of this
 ///       serializer is unsuitable for persistence layers.
 class CAF_CORE_EXPORT binary_serializer final
-  : public save_inspector_base<binary_serializer> {
+  : public save_inspector_base<binary_serializer, byte_writer> {
 public:
-  // -- constructors, destructors, and assignment operators --------------------
+  using super = save_inspector_base<binary_serializer, byte_writer>;
 
-  explicit binary_serializer(byte_buffer& buf) noexcept;
+  explicit binary_serializer(byte_buffer& buf,
+                             caf::actor_handle_codec* codec = nullptr) noexcept;
 
-  binary_serializer(actor_system& sys, byte_buffer& buf) noexcept;
-
-  ~binary_serializer() override;
+  ~binary_serializer() noexcept override;
 
   binary_serializer(const binary_serializer&) = delete;
 
   binary_serializer& operator=(const binary_serializer&) = delete;
 
-  // -- properties -------------------------------------------------------------
+  void reset() {
+    impl_->reset();
+  }
 
-  /// Returns the current execution unit.
-  actor_system* context() const noexcept;
+  [[nodiscard]] const_byte_span bytes() const noexcept {
+    return impl_->bytes();
+  }
 
-  byte_buffer& buf() noexcept;
-
-  const byte_buffer& buf() const noexcept;
-
-  size_t write_pos() const noexcept;
-
-  static constexpr bool has_human_readable_format() noexcept {
+  [[nodiscard]] bool has_human_readable_format() const noexcept {
     return false;
   }
 
-  // -- position management ----------------------------------------------------
-
-  /// Sets the write position to `offset`.
-  /// @pre `offset <= buf.size()`
-  void seek(size_t offset) noexcept;
-
-  /// Jumps `num_bytes` forward. Resizes the buffer (filling it with zeros)
-  /// when skipping past the end.
-  void skip(size_t num_bytes);
-
-  // -- interface functions ----------------------------------------------------
-
-  void set_error(error stop_reason) override;
-
-  error& get_error() noexcept override;
-
-  bool begin_object(type_id_t, std::string_view) noexcept;
-
-  bool end_object();
-
-  bool begin_field(std::string_view) noexcept;
-
-  bool begin_field(std::string_view, bool is_present);
-
-  bool begin_field(std::string_view, std::span<const type_id_t> types,
-                   size_t index);
-
-  bool begin_field(std::string_view, bool is_present,
-                   std::span<const type_id_t> types, size_t index);
-
-  bool end_field();
-
-  bool begin_tuple(size_t);
-
-  bool end_tuple();
-
-  bool begin_key_value_pair();
-
-  bool end_key_value_pair();
-
-  bool begin_sequence(size_t list_size);
-
-  bool end_sequence();
-
-  bool begin_associative_array(size_t size);
-
-  bool end_associative_array();
-
-  bool value(std::byte x);
-
-  bool value(bool x);
-
-  bool value(int8_t x);
-
-  bool value(uint8_t x);
-
-  bool value(int16_t x);
-
-  bool value(uint16_t x);
-
-  bool value(int32_t x);
-
-  bool value(uint32_t x);
-
-  bool value(int64_t x);
-
-  bool value(uint64_t x);
-
-  template <std::integral T>
-  bool value(T x) {
-    return value(static_cast<detail::squashed_int_t<T>>(x));
+  /// Jumps `num_bytes` forward by inserting `num_bytes` zeros at the end of the
+  /// buffer.
+  /// @returns the offset where the zero-bytes were inserted.
+  [[nodiscard]] size_t skip(size_t num_bytes) {
+    return impl_->skip(num_bytes);
   }
 
-  bool value(float x);
-
-  bool value(double x);
-
-  bool value(long double x);
-
-  bool value(std::string_view x);
-
-  bool value(const std::u16string& x);
-
-  bool value(const std::u32string& x);
-
-  bool value(const_byte_span x);
-
-  bool value(const std::vector<bool>& x);
-
-  bool value(const strong_actor_ptr& ptr);
-
-  bool value(const weak_actor_ptr& ptr);
+  /// Overrides the buffer at `offset` with `content`.
+  /// @returns `true` if the buffer was large enough to hold `content`, `false`
+  ///          otherwise.
+  [[nodiscard]] bool update(size_t offset, const_byte_span content) noexcept {
+    return impl_->update(offset, content);
+  }
 
 private:
   static constexpr size_t impl_storage_size = 40;
-
-  /// Opaque implementation class.
-  class impl;
-
-  /// Pointer to the implementation object.
-  placement_ptr<impl> impl_;
 
   /// Storage for the implementation object.
   alignas(std::max_align_t) std::byte impl_storage_[impl_storage_size];

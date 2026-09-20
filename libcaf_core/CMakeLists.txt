@@ -74,6 +74,7 @@ caf_add_component(
     caf/abstract_mailbox.cpp
     caf/abstract_ref_counted.cpp
     caf/abstract_scheduled_actor.cpp
+    caf/actor_handle_codec.cpp
     caf/action.cpp
     caf/action.test.cpp
     caf/actor.cpp
@@ -124,6 +125,8 @@ caf_add_component(
     caf/byte_reader.cpp
     caf/byte_span.cpp
     caf/byte_writer.cpp
+    caf/text_reader.cpp
+    caf/text_writer.cpp
     caf/chrono.cpp
     caf/chrono.test.cpp
     caf/chunk.cpp
@@ -145,7 +148,6 @@ caf_add_component(
     caf/cow_string.test.cpp
     caf/cow_tuple.test.cpp
     caf/deep_to_string.test.cpp
-    caf/default_attachable.cpp
     caf/delegate.test.cpp
     caf/deserializer.cpp
     caf/detached_actors.test.cpp
@@ -174,6 +176,7 @@ caf_add_component(
     caf/detail/current_actor.cpp
     caf/detail/daemons.cpp
     caf/detail/default_mailbox.cpp
+    caf/detail/default_actor_handle_codec.cpp
     caf/detail/default_mailbox.test.cpp
     caf/detail/default_thread_count.cpp
     caf/detail/format.test.cpp
@@ -286,6 +289,7 @@ caf_add_component(
     caf/intrusive/lifo_inbox.test.cpp
     caf/intrusive/linked_list.test.cpp
     caf/intrusive/stack.test.cpp
+    caf/intrusive/lifo_uptr_queue.test.cpp
     caf/intrusive_cow_ptr.test.cpp
     caf/intrusive_ptr.test.cpp
     caf/ipv4_address.cpp

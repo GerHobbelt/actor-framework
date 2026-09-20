@@ -254,8 +254,13 @@ void blocking_actor::receive_impl(receive_cond& rcc, message_id mid,
       continue;
     }
     // Automatically unlink from actors after receiving an exit.
-    if (auto view = make_const_typed_message_view<exit_msg>(ptr->content()))
+    if (auto view = make_const_typed_message_view<exit_msg>(ptr->content())) {
       unlink_from(get<0>(view).source);
+    }
+    // Automatically clear incoming edges after receiving a down message.
+    if (auto view = make_const_typed_message_view<down_msg>(ptr->content())) {
+      clear_incoming_edges(get<0>(view).source);
+    }
     // Always set `current_behavior_` and `current_message_id_` before consuming
     // the message, since `consume` may call `receive` again.
     current_behavior_ = &bhvr;

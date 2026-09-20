@@ -13,6 +13,7 @@
 #include "caf/binary_serializer.hpp"
 #include "caf/defaults.hpp"
 #include "caf/detail/assert.hpp"
+#include "caf/detail/default_actor_handle_codec.hpp"
 #include "caf/log/io.hpp"
 #include "caf/settings.hpp"
 #include "caf/telemetry/histogram.hpp"
@@ -64,7 +65,8 @@ connection_state instance::handle(scheduler* ctx, new_data_msg& dm, header& hdr,
       return err(malformed_message);
     }
   } else {
-    binary_deserializer source{*sys_, dm.buf};
+    detail::default_actor_handle_codec codec{*sys_};
+    binary_deserializer source{dm.buf, &codec};
     if (!source.apply(hdr)) {
       log::io::warning("failed to receive header: {}", source.get_error());
       return err(malformed_message);
@@ -205,11 +207,11 @@ bool instance::dispatch(scheduler* ctx, const strong_actor_ptr& sender,
 void instance::write(actor_system& sys, scheduler*, byte_buffer& buf,
                      header& hdr, payload_writer* pw) {
   auto lg = log::io::trace("hdr = {}", hdr);
-  binary_serializer sink{sys, buf};
+  detail::default_actor_handle_codec codec{sys};
+  binary_serializer sink{buf, &codec};
   if (pw != nullptr) {
     // Write the BASP header after the payload.
-    auto header_offset = buf.size();
-    sink.skip(header_size);
+    auto header_offset = sink.skip(header_size);
     auto& mm_metrics = sys.middleman().metric_singletons;
     auto t0 = telemetry::timer::clock_type::now();
     if (!(*pw)(sink)) {
@@ -217,14 +219,21 @@ void instance::write(actor_system& sys, scheduler*, byte_buffer& buf,
       return;
     }
     telemetry::timer::observe(mm_metrics.serialization_time, t0);
-    sink.seek(header_offset);
-    auto payload_len = buf.size() - (header_offset + basp::header_size);
+    std::array<std::byte, header_size> hdr_buf;
+    auto payload_len = buf.size() - (header_offset + header_size);
     auto signed_payload_len = static_cast<uint32_t>(payload_len);
     mm_metrics.outbound_messages_size->observe(signed_payload_len);
     hdr.payload_len = static_cast<uint32_t>(payload_len);
+    hdr.write_to(hdr_buf);
+    if (!sink.update(header_offset, hdr_buf)) {
+      log::io::error("{}", sink.get_error());
+    }
+    return;
   }
-  if (!sink.apply(hdr))
+  // Write header-only messages such as heartbeats.
+  if (!sink.apply(hdr)) {
     log::io::error("{}", sink.get_error());
+  }
 }
 
 void instance::write_server_handshake(scheduler* ctx, byte_buffer& out_buf,
@@ -328,7 +337,8 @@ connection_state instance::handle(scheduler* ctx, connection_handle hdl,
     case message_type::server_handshake: {
       using string_list = std::vector<std::string>;
       // Deserialize payload.
-      binary_deserializer source{*sys_, *payload};
+      detail::default_actor_handle_codec codec{*sys_};
+      binary_deserializer source{*payload, &codec};
       node_id source_node;
       string_list app_ids;
       actor_id aid = invalid_actor_id;
@@ -386,7 +396,8 @@ connection_state instance::handle(scheduler* ctx, connection_handle hdl,
     }
     case message_type::client_handshake: {
       // Deserialize payload.
-      binary_deserializer source{*sys_, *payload};
+      detail::default_actor_handle_codec codec{*sys_};
+      binary_deserializer source{*payload, &codec};
       node_id source_node;
       if (!source.apply(source_node)) {
         log::io::warning(
@@ -409,7 +420,8 @@ connection_state instance::handle(scheduler* ctx, connection_handle hdl,
     }
     case message_type::routed_message: {
       // Deserialize payload.
-      binary_deserializer source{*sys_, *payload};
+      detail::default_actor_handle_codec codec{*sys_};
+      binary_deserializer source{*payload, &codec};
       node_id source_node;
       node_id dest_node;
       if (!source.apply(source_node) || !source.apply(dest_node)) {
@@ -468,7 +480,8 @@ connection_state instance::handle(scheduler* ctx, connection_handle hdl,
     }
     case message_type::monitor_message: {
       // Deserialize payload.
-      binary_deserializer source{*sys_, *payload};
+      detail::default_actor_handle_codec codec{*sys_};
+      binary_deserializer source{*payload, &codec};
       node_id source_node;
       node_id dest_node;
       if (!source.apply(source_node) || !source.apply(dest_node)) {
@@ -484,7 +497,8 @@ connection_state instance::handle(scheduler* ctx, connection_handle hdl,
     }
     case message_type::down_message: {
       // Deserialize payload.
-      binary_deserializer source{*sys_, *payload};
+      detail::default_actor_handle_codec codec{*sys_};
+      binary_deserializer source{*payload, &codec};
       node_id source_node;
       node_id dest_node;
       error fail_state;
@@ -528,7 +542,8 @@ void instance::forward(scheduler*, const node_id& dest_node, const header& hdr,
                            hdr, payload);
   auto path = lookup(dest_node);
   if (path) {
-    binary_serializer sink{*sys_, callee_.get_buffer(path->hdl)};
+    detail::default_actor_handle_codec codec{*sys_};
+    binary_serializer sink{callee_.get_buffer(path->hdl), &codec};
     if (!sink.apply(hdr)) {
       log::io::error("unable to serialize BASP header: {}", sink.get_error());
       return;

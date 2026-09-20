@@ -95,10 +95,12 @@ class [[nodiscard]] error;
 class abstract_actor;
 class abstract_blocking_actor;
 class abstract_mailbox;
+class abstract_ref_counted;
 class action;
 class actor;
 class actor_addr;
 class actor_clock;
+class actor_handle_codec;
 class actor_companion;
 class actor_config;
 class actor_control_block;
@@ -135,8 +137,10 @@ class json_object;
 class json_reader;
 class json_value;
 class json_writer;
+class text_writer;
 class local_actor;
 class logger;
+class load_inspector;
 class mail_cache;
 class mailbox_element;
 class message;
@@ -152,10 +156,12 @@ class response_promise;
 class resumable;
 class scheduled_actor;
 class scoped_actor;
+class save_inspector;
 class serializer;
 class skip_t;
 class skippable_result;
 class stream;
+class text_reader;
 class thread_hook;
 class type_id_list;
 class uri;
@@ -194,6 +200,7 @@ struct unit_t;
 
 enum class exit_reason : uint8_t;
 enum class invoke_message_result;
+enum class message_priority;
 enum class pec : uint8_t;
 enum class sec : uint8_t;
 enum class spawn_options : int;
@@ -357,6 +364,7 @@ namespace detail {
 
 struct meta_object;
 
+class abstract_monitor_action;
 class abstract_worker;
 class abstract_worker_hub;
 class actor_system_access;
@@ -370,6 +378,7 @@ class response_promise_state;
 class stream_bridge;
 class stream_bridge_sub;
 
+using abstract_monitor_action_ptr = intrusive_ptr<abstract_monitor_action>;
 using global_meta_objects_guard_type = intrusive_ptr<ref_counted>;
 
 } // namespace detail
@@ -391,6 +400,7 @@ using strong_actor_ptr = intrusive_ptr<actor_control_block>;
 
 // -- unique pointer aliases ---------------------------------------------------
 
+using attachable_ptr = std::unique_ptr<attachable>;
 using mailbox_element_ptr = std::unique_ptr<mailbox_element>;
 
 } // namespace caf

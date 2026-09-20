@@ -5,6 +5,7 @@
 #include "caf/json_reader.hpp"
 
 #include "caf/actor_control_block.hpp"
+#include "caf/actor_handle_codec.hpp"
 #include "caf/byte_span.hpp"
 #include "caf/deserializer.hpp"
 #include "caf/detail/assert.hpp"
@@ -96,11 +97,11 @@ std::string_view field_type(const caf::detail::json::object* obj,
 
 namespace caf {
 
-class json_reader::impl : public byte_reader {
+class json_reader_impl : public text_reader {
 public:
   // -- member types -----------------------------------------------------------
 
-  using super = byte_reader;
+  using super = text_reader;
 
   struct sequence {
     detail::json::array::const_iterator pos;
@@ -177,15 +178,15 @@ public:
 
   // -- constructors, destructors, and assignment operators --------------------
 
-  impl(actor_system* sys, deserializer* parent) : sys_(sys), parent_(parent) {
+  explicit json_reader_impl(caf::actor_handle_codec* codec) : codec_(codec) {
     field_.reserve(8);
   }
 
-  impl(const json_reader&) = delete;
+  json_reader_impl(const json_reader_impl&) = delete;
 
-  impl& operator=(const json_reader&) = delete;
+  json_reader_impl& operator=(const json_reader_impl&) = delete;
 
-  ~impl() override {
+  ~json_reader_impl() override {
     // nop
   }
 
@@ -194,22 +195,22 @@ public:
   /// Returns the suffix for generating type annotation fields for variant
   /// fields. For example, CAF inserts field called "@foo${field_type_suffix}"
   /// for a variant field called "foo".
-  [[nodiscard]] std::string_view field_type_suffix() const noexcept {
+  [[nodiscard]] std::string_view field_type_suffix() const noexcept override {
     return field_type_suffix_;
   }
 
   /// Configures whether the writer omits empty fields.
-  void field_type_suffix(std::string_view suffix) noexcept {
+  void field_type_suffix(std::string_view suffix) noexcept override {
     field_type_suffix_ = suffix;
   }
 
   /// Returns the type ID mapper used by the writer.
-  [[nodiscard]] const type_id_mapper* mapper() const noexcept {
+  [[nodiscard]] const type_id_mapper* mapper() const noexcept override {
     return mapper_;
   }
 
   /// Changes the type ID mapper for the writer.
-  void mapper(const type_id_mapper* ptr) noexcept {
+  void mapper(const type_id_mapper* ptr) noexcept override {
     mapper_ = ptr;
   }
 
@@ -223,14 +224,7 @@ public:
     return err_;
   }
 
-  /// Parses @p json_text into an internal representation. After loading the
-  /// JSON input, the reader is ready for attempting to deserialize inspectable
-  /// objects.
-  /// @warning The internal data structure keeps pointers into @p json_text.
-  ///          Hence, the buffer pointed to by the string view must remain valid
-  ///          until either destroying this reader or calling `reset`.
-  /// @note Implicitly calls `reset`.
-  bool load(std::string_view json_text) {
+  bool load(std::string_view json_text) override {
     reset();
     string_parser_state ps{json_text.begin(), json_text.end()};
     root_ = detail::json::parse_shallow(ps, &buf_);
@@ -248,8 +242,7 @@ public:
   }
 
   bool load_bytes(const_byte_span bytes) override {
-    auto utf8 = to_string_view(bytes);
-    return load(utf8);
+    return load(to_string_view(bytes));
   }
 
   /// Reads the input stream @p input and parses the content into an internal
@@ -295,7 +288,7 @@ public:
   /// Reverts the state of the reader back to where it was after calling `load`.
   /// @post The reader is ready for attempting to deserialize another
   ///       inspectable object.
-  void revert() {
+  void revert() override {
     if (st_) {
       CAF_ASSERT(root_ != nullptr);
       err_.reset();
@@ -306,7 +299,7 @@ public:
   }
 
   /// Removes any loaded JSON data and reclaims memory resources.
-  void reset() {
+  void reset() override {
     buf_.release();
     st_ = nullptr;
     err_.reset();
@@ -314,10 +307,6 @@ public:
   }
 
   // -- overrides --------------------------------------------------------------
-
-  caf::actor_system* sys() const noexcept override {
-    return sys_;
-  }
 
   bool has_human_readable_format() const noexcept override {
     return true;
@@ -739,16 +728,12 @@ public:
     return false;
   }
 
-  bool value(strong_actor_ptr& ptr) override {
-    // These are customization points for the deserializer. Client code may
-    // inherit from json_reader and override these member functions. Hence, we
-    // need to dispatch to the parent class.
-    return parent_->value(ptr);
+  caf::actor_handle_codec* actor_handle_codec() override {
+    return codec_;
   }
 
-  bool value(weak_actor_ptr& ptr) override {
-    // Same as above.
-    return parent_->value(ptr);
+  static json_reader_impl& downcast(text_reader& ptr) {
+    return static_cast<json_reader_impl&>(ptr);
   }
 
 private:
@@ -882,8 +867,6 @@ private:
     }
   }
 
-  actor_system* sys_ = nullptr;
-
   std::pmr::monotonic_buffer_resource buf_;
 
   stack_type* st_ = nullptr;
@@ -903,227 +886,30 @@ private:
 
   error err_;
 
-  deserializer* parent_;
+  caf::actor_handle_codec* codec_ = nullptr;
 };
 
 // -- constructors, destructors, and assignment operators ----------------------
 
-json_reader::json_reader() {
-  static_assert(sizeof(impl) <= impl_storage_size);
-  impl_.reset(new (impl_storage_) impl(nullptr, this));
+json_reader::json_reader(caf::actor_handle_codec* codec) : super(nullptr) {
+  static_assert(sizeof(json_reader_impl) <= impl_storage_size);
+  impl_.reset(new (impl_storage_) json_reader_impl(codec));
 }
 
-json_reader::json_reader(actor_system& sys) {
-  impl_.reset(new (impl_storage_) impl(&sys, this));
-}
-
-json_reader::~json_reader() {
+json_reader::~json_reader() noexcept {
   // nop
 }
 
-// -- properties -------------------------------------------------------------
-
-[[nodiscard]] std::string_view json_reader::field_type_suffix() const noexcept {
-  return impl_->field_type_suffix();
-}
-
-void json_reader::field_type_suffix(std::string_view suffix) noexcept {
-  impl_->field_type_suffix(suffix);
-}
-
-[[nodiscard]] const type_id_mapper* json_reader::mapper() const noexcept {
-  return impl_->mapper();
-}
-
-/// Changes the type ID mapper for the writer.
-void json_reader::mapper(const type_id_mapper* ptr) noexcept {
-  impl_->mapper(ptr);
-}
-
-// -- modifiers --------------------------------------------------------------
-
-void json_reader::set_error(error stop_reason) {
-  impl_->set_error(std::move(stop_reason));
-}
-
-error& json_reader::get_error() noexcept {
-  return impl_->get_error();
-}
-
-bool json_reader::load(std::string_view json_text) {
-  return impl_->load(json_text);
-}
-
-bool json_reader::load_bytes(const_byte_span bytes) {
-  return impl_->load_bytes(bytes);
-}
-
 bool json_reader::load_from(std::istream& input) {
-  return impl_->load_from(input);
+  return json_reader_impl::downcast(*impl_).load_from(input);
 }
 
 bool json_reader::load_file(const char* path) {
-  return impl_->load_file(path);
+  return json_reader_impl::downcast(*impl_).load_file(path);
 }
 
 bool json_reader::load_file(const std::string& path) {
-  return impl_->load_file(path);
-}
-
-void json_reader::revert() {
-  impl_->revert();
-}
-
-void json_reader::reset() {
-  impl_->reset();
-}
-
-// -- interface functions ------------------------------------------------------
-
-caf::actor_system* json_reader::sys() const noexcept {
-  return impl_->sys();
-}
-
-bool json_reader::has_human_readable_format() const noexcept {
-  return impl_->has_human_readable_format();
-}
-
-bool json_reader::fetch_next_object_type(type_id_t& type) {
-  return impl_->fetch_next_object_type(type);
-}
-
-bool json_reader::fetch_next_object_name(std::string_view& type_name) {
-  return impl_->fetch_next_object_name(type_name);
-}
-
-bool json_reader::begin_object(type_id_t, std::string_view) {
-  return impl_->begin_object(type_id_t{}, std::string_view{});
-}
-
-bool json_reader::end_object() {
-  return impl_->end_object();
-}
-
-bool json_reader::begin_field(std::string_view name) {
-  return impl_->begin_field(name);
-}
-
-bool json_reader::begin_field(std::string_view name, bool& is_present) {
-  return impl_->begin_field(name, is_present);
-}
-
-bool json_reader::begin_field(std::string_view name,
-                              std::span<const type_id_t> types, size_t& index) {
-  return impl_->begin_field(name, types, index);
-}
-
-bool json_reader::begin_field(std::string_view name, bool& is_present,
-                              std::span<const type_id_t> types, size_t& index) {
-  return impl_->begin_field(name, is_present, types, index);
-}
-
-bool json_reader::end_field() {
-  return impl_->end_field();
-}
-
-bool json_reader::begin_tuple(size_t size) {
-  return impl_->begin_tuple(size);
-}
-
-bool json_reader::end_tuple() {
-  return impl_->end_tuple();
-}
-
-bool json_reader::begin_key_value_pair() {
-  return impl_->begin_key_value_pair();
-}
-
-bool json_reader::end_key_value_pair() {
-  return impl_->end_key_value_pair();
-}
-
-bool json_reader::begin_sequence(size_t& size) {
-  return impl_->begin_sequence(size);
-}
-
-bool json_reader::end_sequence() {
-  return impl_->end_sequence();
-}
-
-bool json_reader::begin_associative_array(size_t& size) {
-  return impl_->begin_associative_array(size);
-}
-
-bool json_reader::end_associative_array() {
-  return impl_->end_associative_array();
-}
-
-bool json_reader::value(std::byte& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(bool& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(int8_t& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(uint8_t& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(int16_t& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(uint16_t& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(int32_t& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(uint32_t& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(int64_t& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(uint64_t& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(float& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(double& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(long double& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(std::string& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(std::u16string& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(std::u32string& x) {
-  return impl_->value(x);
-}
-
-bool json_reader::value(byte_span x) {
-  return impl_->value(x);
+  return json_reader_impl::downcast(*impl_).load_file(path);
 }
 
 } // namespace caf

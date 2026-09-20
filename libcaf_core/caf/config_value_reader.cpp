@@ -4,6 +4,7 @@
 
 #include "caf/config_value_reader.hpp"
 
+#include "caf/actor_handle_codec.hpp"
 #include "caf/config_value.hpp"
 #include "caf/detail/assert.hpp"
 #include "caf/detail/overload.hpp"
@@ -97,7 +98,7 @@ inline constexpr auto pretty_name_v = pretty_name<T>::value;
 
 namespace caf {
 
-class config_value_reader::impl : public deserializer {
+class config_value_reader_impl : public deserializer {
 public:
   // -- member types------------------------------------------------------------
 
@@ -112,7 +113,7 @@ public:
 
   // static utility functions --------------------------------------------------
 
-  static auto get_pretty_name(const impl::value_type& x) {
+  static auto get_pretty_name(const config_value_reader_impl::value_type& x) {
     const char* pretty_names[] = {
       "dictionary",   "config_value", "key",
       "absent field", "sequence",     "associative array",
@@ -122,13 +123,15 @@ public:
 
   // -- constructors, destructors, and assignment operators --------------------
 
-  impl(const config_value* input, actor_system* sys) : sys_(sys) {
+  config_value_reader_impl(const config_value* input,
+                           caf::actor_handle_codec* codec)
+    : codec_(codec) {
     st_.push(input);
   }
 
-  impl(const impl&) = delete;
+  config_value_reader_impl(const config_value_reader_impl&) = delete;
 
-  impl& operator=(const impl&) = delete;
+  config_value_reader_impl& operator=(const config_value_reader_impl&) = delete;
 
   // -- stack access -----------------------------------------------------------
 
@@ -146,10 +149,6 @@ public:
 
   error& get_error() noexcept override {
     return err_;
-  }
-
-  caf::actor_system* sys() const noexcept override {
-    return sys_;
   }
 
   bool has_human_readable_format() const noexcept override {
@@ -473,7 +472,7 @@ public:
   }
 
   template <class T>
-  bool pull(impl& reader, T& x) {
+  bool pull(config_value_reader_impl& reader, T& x) {
     using internal_type
       = std::conditional_t<std::is_floating_point_v<T>, config_value::real, T>;
     auto assign = [&x](const auto& result) {
@@ -631,6 +630,10 @@ public:
     return true;
   }
 
+  caf::actor_handle_codec* actor_handle_codec() override {
+    return codec_;
+  }
+
 private:
   // Sets `type` according to the `@type` field in `obj` or to the type ID of
   // `settings` as fallback if no such field exists.
@@ -648,184 +651,26 @@ private:
     }
   }
 
-  actor_system* sys_ = nullptr;
-
   stack_type st_;
 
   // Stores on-the-fly converted values.
   std::vector<std::unique_ptr<config_value>> scratch_space_;
 
   error err_;
+
+  caf::actor_handle_codec* codec_ = nullptr;
 };
 
 // -- constructors, destructors, and assignment operators ----------------------
 
-config_value_reader::config_value_reader(const config_value* input) {
-  static_assert(sizeof(impl) <= impl_storage_size);
-  impl_.reset(new (impl_storage_) impl(input, nullptr));
-}
-
 config_value_reader::config_value_reader(const config_value* input,
-                                         actor_system& sys) {
-  impl_.reset(new (impl_storage_) impl(input, &sys));
+                                         caf::actor_handle_codec* codec)
+  : super(new(impl_storage_) config_value_reader_impl(input, codec)) {
+  static_assert(sizeof(config_value_reader_impl) <= impl_storage_size);
 }
 
-config_value_reader::~config_value_reader() {
+config_value_reader::~config_value_reader() noexcept {
   // nop
-}
-
-// -- interface functions ------------------------------------------------------
-
-void config_value_reader::set_error(error stop_reason) {
-  impl_->set_error(std::move(stop_reason));
-}
-
-error& config_value_reader::get_error() noexcept {
-  return impl_->get_error();
-}
-
-caf::actor_system* config_value_reader::sys() const noexcept {
-  return impl_->sys();
-}
-
-bool config_value_reader::has_human_readable_format() const noexcept {
-  return impl_->has_human_readable_format();
-}
-
-bool config_value_reader::fetch_next_object_type(type_id_t& type) {
-  return impl_->fetch_next_object_type(type);
-}
-
-bool config_value_reader::begin_object(type_id_t type, std::string_view) {
-  return impl_->begin_object(type, {});
-}
-
-bool config_value_reader::end_object() {
-  return impl_->end_object();
-}
-
-bool config_value_reader::begin_field(std::string_view name) {
-  return impl_->begin_field(name);
-}
-
-bool config_value_reader::begin_field(std::string_view name, bool& is_present) {
-  return impl_->begin_field(name, is_present);
-}
-
-bool config_value_reader::begin_field(std::string_view name,
-                                      std::span<const type_id_t> types,
-                                      size_t& index) {
-  return impl_->begin_field(name, types, index);
-}
-
-bool config_value_reader::begin_field(std::string_view name, bool& is_present,
-                                      std::span<const type_id_t> types,
-                                      size_t& index) {
-  return impl_->begin_field(name, is_present, types, index);
-}
-
-bool config_value_reader::end_field() {
-  return impl_->end_field();
-}
-
-bool config_value_reader::begin_tuple(size_t size) {
-  return impl_->begin_tuple(size);
-}
-
-bool config_value_reader::end_tuple() {
-  return impl_->end_tuple();
-}
-
-bool config_value_reader::begin_key_value_pair() {
-  return impl_->begin_key_value_pair();
-}
-
-bool config_value_reader::end_key_value_pair() {
-  return impl_->end_key_value_pair();
-}
-
-bool config_value_reader::begin_sequence(size_t& size) {
-  return impl_->begin_sequence(size);
-}
-
-bool config_value_reader::end_sequence() {
-  return impl_->end_sequence();
-}
-
-bool config_value_reader::begin_associative_array(size_t& size) {
-  return impl_->begin_associative_array(size);
-}
-
-bool config_value_reader::end_associative_array() {
-  return impl_->end_associative_array();
-}
-
-bool config_value_reader::value(std::byte& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(bool& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(int8_t& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(uint8_t& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(int16_t& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(uint16_t& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(int32_t& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(uint32_t& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(int64_t& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(uint64_t& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(float& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(double& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(long double& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(std::string& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(std::u16string& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(std::u32string& x) {
-  return impl_->value(x);
-}
-
-bool config_value_reader::value(byte_span bytes) {
-  return impl_->value(bytes);
 }
 
 } // namespace caf
