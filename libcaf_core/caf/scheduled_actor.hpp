@@ -123,17 +123,11 @@ public:
   /// Function object for handling unmatched messages.
   using default_handler = std::function<skippable_result(pointer, message&)>;
 
-  /// Function object for handling error messages.
-  using error_handler = std::function<void(pointer, error&)>;
-
   /// Function object for handling down messages.
   using down_handler = std::function<void(pointer, down_msg&)>;
 
   /// Function object for handling node down messages.
   using node_down_handler = std::function<void(pointer, node_down_msg&)>;
-
-  /// Function object for handling exit messages.
-  using exit_handler = std::function<void(pointer, exit_msg&)>;
 
   /// Function object for handling timeouts.
   using idle_handler = std::function<void()>;
@@ -268,41 +262,6 @@ public:
     };
   }
 
-  /// Sets a custom handler for error messages.
-  CAF_DEPRECATED("use a handler for 'error' instead")
-  void set_error_handler(error_handler fun) {
-    if (fun)
-      error_handler_ = std::move(fun);
-    else
-      error_handler_ = default_error_handler;
-  }
-
-  /// Sets a custom handler for error messages.
-  template <std::invocable<error&> F>
-  CAF_DEPRECATED("use a handler for 'error' instead")
-  void set_error_handler(F fun) {
-    error_handler_ = [fn{std::move(fun)}](scheduled_actor*, error& x) mutable {
-      fn(x);
-    };
-  }
-
-  /// Sets a custom handler for down messages.
-  CAF_DEPRECATED("use monitor with callback instead")
-  void set_down_handler(down_handler fun) {
-    if (fun)
-      down_handler_ = std::move(fun);
-    else
-      down_handler_ = default_down_handler;
-  }
-
-  /// Sets a custom handler for down messages.
-  template <std::invocable<down_msg&> F>
-  CAF_DEPRECATED("use monitor with callback instead")
-  void set_down_handler(F fun) {
-    down_handler_ = [fn{std::move(fun)}](scheduled_actor*,
-                                         down_msg& x) mutable { fn(x); };
-  }
-
   /// Sets a custom handler for node down messages.
   CAF_DEPRECATED("use a handler for 'node_down_msg' instead")
   void set_node_down_handler(node_down_handler fun) {
@@ -320,23 +279,6 @@ public:
                                               node_down_msg& x) mutable {
       fn(x);
     };
-  }
-
-  /// Sets a custom handler for error messages.
-  CAF_DEPRECATED("use a handler for 'exit_msg' instead")
-  void set_exit_handler(exit_handler fun) {
-    if (fun)
-      exit_handler_ = std::move(fun);
-    else
-      exit_handler_ = default_exit_handler;
-  }
-
-  /// Sets a custom handler for exit messages.
-  template <std::invocable<exit_msg&> F>
-  CAF_DEPRECATED("use a handler for 'exit_msg' instead")
-  void set_exit_handler(F fun) {
-    exit_handler_ = [fn{std::move(fun)}](scheduled_actor*,
-                                         exit_msg& x) mutable { fn(x); };
   }
 
 #ifdef CAF_ENABLE_EXCEPTIONS
@@ -604,18 +546,6 @@ public:
 
   using super::demonitor;
 
-  template <message_priority P = message_priority::normal, class Handle>
-  CAF_DEPRECATED("use the monitor() overload with a callback instead")
-  void monitor(const Handle& whom) {
-    do_monitor(actor_cast<abstract_actor*>(whom), P);
-  }
-
-  template <class Handle>
-  CAF_DEPRECATED("use the monitor() overload with a callback instead")
-  void demonitor(const Handle& whom) {
-    do_demonitor(actor_cast<strong_actor_ptr>(whom));
-  }
-
   /// Adds a unidirectional `monitor` to `whom` with custom callback.
   /// @returns a disposable object for canceling the monitoring of `whom`.
   /// @note This overload does not work with the @ref demonitor member function.
@@ -681,17 +611,11 @@ protected:
   /// Customization point for setting a default `message` callback.
   default_handler default_handler_;
 
-  /// Customization point for setting a default `error` callback.
-  error_handler error_handler_;
-
   /// Customization point for setting a default `down_msg` callback.
   down_handler down_handler_;
 
   /// Customization point for setting a default `down_msg` callback.
   node_down_handler node_down_handler_;
-
-  /// Customization point for setting a default `exit_msg` callback.
-  exit_handler exit_handler_;
 
   /// Pointer to a private thread object associated with a detached actor.
   detail::private_thread* private_thread_;

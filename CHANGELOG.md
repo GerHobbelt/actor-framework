@@ -147,6 +147,7 @@ is based on [Keep a Changelog](https://keepachangelog.com).
 - Setting the new CMake option `CAF_ENABLE_RTTI` to `OFF` will now disable all
   uses of `typeid` and `dynamic_cast` in CAF. This enables users to build CAF
   with compiler options such as `-fno-rtti`.
+- Added support for `std::monostate` in the inspection API (#2388).
 
 ### Fixed
 
@@ -165,9 +166,15 @@ is based on [Keep a Changelog](https://keepachangelog.com).
   duration of the application, those stale weak pointers effectively caused
   memory leaks since memory can only be freed fully once all strong and weak
   references have expired.
+- Fix a heap-buffer-overflow in the test runner on missing CLI arguments. For
+  example, running `caf-core-test -s` previously crashed (`-s` requires an
+  argument, #2384).
 
 ### Removed
 
+- For event-based actors (`scheduled_actor`), removed `set_down_handler` and the
+  single-argument `monitor` / `demonitor` overloads for actor handles. Use
+  `monitor(handle, callback)` and the returned `disposable` instead (#1873).
 - Removed the with DSL building base classes form `caf/net/dsl/` (#2026).
 - Removed the deprecated `actor_ostream` class and the `aout` utility. They have
   been deprecated since CAF 1.0.0. Users should now use `println` instead, which
