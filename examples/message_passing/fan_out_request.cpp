@@ -76,12 +76,12 @@ struct matrix_state {
     : self(selfptr), rows(num_rows), columns(num_columns) {
     // Spawn all cells.
     data.resize(rows);
-    std::ranges::for_each(data, [this](auto& row) {
+    for (auto& row : data) {
       row.resize(columns);
       std::ranges::generate(row, [this] {
         return self->spawn(actor_from_state<cell_state>);
       });
-    });
+    }
   }
 
   matrix::behavior_type make_behavior() {
@@ -131,7 +131,9 @@ struct matrix_state {
         auto cells = std::vector<cell>{}; // The cells we need to query.
         cells.reserve(rows);
         std::ranges::transform(data, std::back_inserter(cells),
-                               [column](auto& row) { return row[column]; });
+                               [column](const auto& row) {
+                                 return row[column];
+                               });
         auto rp = self->make_response_promise<double>();
         self->mail(get)
           .fan_out_request(cells, infinite, policy::select_all_tag)

@@ -40,7 +40,6 @@ public:
   }
 
   /// Creates a behavior from `fun` without timeout.
-  // cppcheck-suppress noExplicitConstructor
   behavior(const message_handler& mh);
 
   /// The list of arguments can contain match expressions, message handlers,
@@ -59,7 +58,6 @@ public:
   /// Creates a behavior from `tdef` without message handler.
   template <class F>
   CAF_DEPRECATED("use idle timeouts instead of 'after >> ...'")
-  // cppcheck-suppress noExplicitConstructor
   behavior(timeout_definition<F> tdef) : impl_(detail::make_behavior(tdef)) {
     // nop
   }
@@ -115,8 +113,13 @@ public:
   }
 
   /// Runs this handler with callback.
-  bool operator()(detail::invoke_result_visitor& f, message& xs) {
+  bool invoke(detail::invoke_result_visitor& f, message& xs) {
     return impl_ ? impl_->invoke(f, xs) : false;
+  }
+
+  /// Runs this handler with callback.
+  bool operator()(detail::invoke_result_visitor& f, message& xs) {
+    return invoke(f, xs);
   }
 
   /// Checks whether this behavior is not empty.
