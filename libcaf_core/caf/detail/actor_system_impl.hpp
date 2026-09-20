@@ -43,13 +43,11 @@ public:
 
   virtual size_t dec_running_actors_count(actor_id who) = 0;
 
-  virtual void
-  await_running_actors_count_equal(size_t expected, timespan timeout)
-    = 0;
+  virtual void await_running_actors_count_equal(size_t expected,
+                                                timespan timeout) = 0;
 
   virtual detail::global_meta_objects_guard_type
-  meta_objects_guard() const noexcept
-    = 0;
+  meta_objects_guard() const noexcept = 0;
 
   virtual actor_system_config& config() = 0;
 
@@ -58,6 +56,10 @@ public:
   virtual actor_clock& clock() noexcept = 0;
 
   virtual size_t detached_actors() const noexcept = 0;
+
+  /// Returns `true` when the implementation is the deterministic test fixture
+  /// (`deterministic_actor_system`).
+  virtual bool is_deterministic() const noexcept;
 
   virtual bool await_actors_before_shutdown() const = 0;
 
@@ -102,9 +104,8 @@ public:
   /// to the scheduler.
   virtual void max_throughput_reached(abstract_actor*) = 0;
 
-  virtual void
-  launch(local_actor* ptr, caf::scheduler* ctx, spawn_options options)
-    = 0;
+  virtual void launch(local_actor* ptr, caf::scheduler* ctx,
+                      spawn_options options) = 0;
 };
 
 } // namespace caf::detail

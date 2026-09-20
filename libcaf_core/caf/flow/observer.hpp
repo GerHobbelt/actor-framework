@@ -113,16 +113,19 @@ public:
 
   /// @pre `valid()`
   void on_subscribe(subscription sub) {
+    CAF_ASSERT(pimpl_ != nullptr);
     pimpl_->on_subscribe(std::move(sub));
   }
 
   /// @pre `valid()`
   void on_batch(const async::batch& buf) {
+    CAF_ASSERT(pimpl_ != nullptr);
     pimpl_->on_batch(buf);
   }
 
   /// @pre `valid()`
   void on_next(const T& item) {
+    CAF_ASSERT(pimpl_ != nullptr);
     pimpl_->on_next(item);
   }
 
@@ -380,7 +383,7 @@ public:
     });
   }
 
-  void on_consumer_demand(size_t demand) override {
+  void on_consumer_demand(size_t demand, bool) override {
     auto lg = log::core::trace("demand = {}", demand);
     parent_->schedule_fn([ptr{strong_this()}, demand] { //
       auto lg = log::core::trace("demand = {}", demand);

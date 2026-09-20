@@ -5,16 +5,23 @@
 #include "caf/async/blocking_producer.hpp"
 
 #include "caf/test/scenario.hpp"
+#include "caf/test/test.hpp"
 
 #include "caf/actor_system.hpp"
 #include "caf/actor_system_config.hpp"
+#include "caf/async/consumer.hpp"
+#include "caf/async/policy.hpp"
+#include "caf/async/spsc_buffer.hpp"
+#include "caf/detail/atomic_ref_count.hpp"
 #include "caf/event_based_actor.hpp"
 #include "caf/init_global_meta_objects.hpp"
+#include "caf/make_counted.hpp"
 #include "caf/scheduled_actor/flow.hpp"
 #include "caf/scoped_actor.hpp"
 
 #include <mutex>
 #include <thread>
+#include <vector>
 
 // Some offset to avoid collisions with other type IDs.
 CAF_BEGIN_TYPE_ID_BLOCK(blocking_producer_test, caf::first_custom_type_id + 170,
@@ -62,14 +69,49 @@ using push_resource_t = async::producer_resource<pull_val_t>;
 
 using pull_resource_t = async::consumer_resource<pull_val_t>;
 
-void do_push(sync_t* sync, push_val_t push, int begin, int end) {
-  auto buf = push.try_open();
-  if (!buf) {
-    CAF_RAISE_ERROR("push.try_open failed");
+struct thread_pull_consumer : async::consumer {
+  void on_producer_ready() override {
+    // nop
   }
-  async::blocking_producer out{std::move(buf)};
+
+  void on_producer_wakeup() override {
+    // nop
+  }
+
+  void ref() const noexcept final {
+    ref_count_.inc();
+  }
+
+  void deref() const noexcept final {
+    ref_count_.dec(this);
+  }
+
+  mutable caf::detail::atomic_ref_count ref_count_;
+};
+
+struct int_observer {
+  void on_next(const int& x) {
+    out->push_back(x);
+  }
+
+  void on_error(const error&) {
+    // nop
+  }
+
+  void on_complete() {
+    // nop
+  }
+
+  std::vector<int>* out = nullptr;
+};
+
+void do_push(sync_t* sync, push_val_t push, int begin, int end) {
+  auto out = async::make_blocking_producer(std::move(push));
+  if (!out) {
+    CAF_RAISE_ERROR("make_blocking_producer");
+  }
   for (auto i = begin; i != end; ++i)
-    out.push(i);
+    out->push(i);
   sync->release();
 }
 
@@ -81,17 +123,16 @@ std::pair<std::thread, pull_val_t> start_worker(sync_t* sync, int begin,
 }
 
 void run(push_resource_t push) {
-  auto buf = push.try_open();
-  if (!buf) {
-    CAF_RAISE_ERROR("push.try_open failed");
+  auto out = async::make_blocking_producer(std::move(push));
+  if (!out) {
+    CAF_RAISE_ERROR("make_blocking_producer");
   }
-  async::blocking_producer out{std::move(buf)};
   sync_t sync;
   std::vector<std::thread> threads;
   auto add_worker = [&](int begin, int end) {
     auto [hdl, pull] = start_worker(&sync, begin, end);
     threads.push_back(std::move(hdl));
-    out.push(std::move(pull));
+    out->push(std::move(pull));
   };
   std::vector<std::pair<int, int>> ranges{{0, 1337},    {1337, 1338},
                                           {1338, 1338}, {1338, 2777},
@@ -122,6 +163,40 @@ void receiver_impl(event_based_actor* self, pull_resource_t inputs,
 } // namespace
 
 WITH_FIXTURE(fixture) {
+
+TEST("blocking producer waits when the buffer is at hard capacity") {
+  auto [rd, wr] = async::make_spsc_buffer_resource<int>(2, 1);
+  auto wbuf = wr.try_open();
+  require_ne(wbuf, nullptr);
+  auto rbuf = rd.try_open();
+  require_ne(rbuf, nullptr);
+  auto cons = make_counted<thread_pull_consumer>();
+  rbuf->set_consumer(cons);
+  async::blocking_producer<int> out{std::move(wbuf)};
+  std::vector<int> received;
+  int_observer obs{&received};
+  // Run pushes on a worker thread and pull from the main thread so a
+  // spinning consumer cannot starve the producer (and vice versa: retry with
+  // yield when `pull` returns no data yet — an open buffer may report
+  // `{true, 0}` until the producer enqueues).
+  std::thread producer([&] {
+    for (int i = 0; i < 10; ++i)
+      check(out.push(i));
+  });
+  while (received.size() < 10u) {
+    auto [ok, n] = rbuf->pull(async::delay_errors, 1, obs);
+    if (!ok)
+      break;
+    if (n == 0)
+      std::this_thread::yield();
+  }
+  producer.join();
+  if (check_eq(received.size(), 10u)) {
+    for (int i = 0; i < 10; ++i)
+      check_eq(received[static_cast<size_t>(i)], i);
+  }
+  rbuf->cancel();
+}
 
 SCENARIO("blocking producers allow threads to generate data") {
   GIVEN("a dynamic set of blocking producers") {

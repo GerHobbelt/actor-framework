@@ -24,9 +24,15 @@ public:
 
   ~abstract_blocking_actor() override;
 
+  message_id new_request_id(message_priority mp) noexcept;
+
+protected:
+  // last used request ID
+  message_id last_request_id_;
+
 private:
-  virtual void receive_impl(message_id mid, behavior& bhvr, timespan timeout)
-    = 0;
+  virtual void receive_impl(message_id mid, behavior& bhvr,
+                            timespan timeout) = 0;
 };
 
 } // namespace caf

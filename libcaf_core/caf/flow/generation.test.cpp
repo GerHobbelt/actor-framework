@@ -188,14 +188,14 @@ SCENARIO("callable sources stream values generated from a function object") {
 
 SCENARIO("asynchronous buffers can generate flow items") {
   GIVEN("a background thread writing into an async buffer") {
-    auto cancelled = std::atomic<bool>{false};
-    auto producer_impl = [this, &cancelled](async::producer_resource<int> res) {
+    auto canceled = std::atomic<bool>{false};
+    auto producer_impl = [this, &canceled](async::producer_resource<int> res) {
       auto producer = async::make_blocking_producer(std::move(res));
       if (!producer)
         fail("make_blocking_producer failed");
       for (int i = 1; i <= 713; ++i) {
         if (!producer->push(i)) {
-          cancelled = true;
+          canceled = true;
           return;
         }
       }
@@ -212,7 +212,7 @@ SCENARIO("asynchronous buffers can generate flow items") {
         run_flows(2s);
         check_eq(res, iota_vec(713));
         bg_thread.join();
-        check(!cancelled);
+        check(!canceled);
       }
     }
     WHEN("reading only a subset of values from the buffer") {
@@ -227,7 +227,7 @@ SCENARIO("asynchronous buffers can generate flow items") {
         run_flows(2s);
         check_eq(res, iota_vec(20));
         bg_thread.join();
-        check(cancelled);
+        check(canceled);
       }
     }
     WHEN("canceling the subscription to the buffer") {
@@ -249,7 +249,7 @@ SCENARIO("asynchronous buffers can generate flow items") {
         run_flows();
         check(res.empty());
         bg_thread.join();
-        check(cancelled);
+        check(canceled);
       }
     }
   }
@@ -315,6 +315,48 @@ SCENARIO("asynchronous buffers can generate flow items") {
       }
     }
   }
+}
+
+// GH-2395 had this sequence of events on from_resource_sub leading to a crash:
+// 1. `on_producer_wakeup` gets called -> schedules action A
+// 2. `request(n)` gets called (demand was 0) -> schedules action B
+// 3. action A runs -> sets `running_` back to false
+// 4. action B runs
+// 5. the observer cancels the subscription mid-batch
+// 6. do_run() still runs, yet cancel() gets called with `running_` is false
+TEST("GH-2395 regression") {
+  // Get our pull and push resources.
+  auto [pull, push] = async::make_spsc_buffer_resource<int>(50, 10);
+  // Something to write to the buffer.
+  auto producer = async::make_blocking_producer(std::move(push));
+  require(producer.has_value());
+  // An observer that will cancel on the first `on_next` call.
+  auto out = make_canceling_observer<int>(true, false);
+  // Our `from_resource_sub` for the regression test.
+  auto buf = pull.try_open();
+  using buffer_type = async::spsc_buffer<int>;
+  using impl_t = caf::flow::op::from_resource_sub<buffer_type>;
+  auto ptr = coordinator()->add_child(std::in_place_type<impl_t>, buf,
+                                      out->as_observer());
+  buf->set_consumer(ptr);
+  out->on_subscribe(subscription{ptr});
+  // Drain any scheduled action.
+  run_flows();
+  // Step 1: trigger `on_producer_wakeup` to schedule action A.
+  ptr->on_producer_wakeup();
+  // Put an action on top that will push to the buffer after action A runs.
+  coordinator()->schedule_fn([this, &producer] {
+    // Push items to the buffer so action B will call `on_next` on the observer.
+    for (int i = 0; i < 10; ++i) {
+      if (!producer->push(i)) {
+        fail("push failed");
+      }
+    }
+  });
+  // Step 2: call `request(n)` to schedule action B.
+  out->sub.request(5);
+  // Prior to the fix for GH-2395, this crashed in `observer<T>::on_next`.
+  run_flows();
 }
 
 namespace {
