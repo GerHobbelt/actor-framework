@@ -6,13 +6,13 @@
 
 #include "caf/abstract_actor.hpp"
 #include "caf/actor.hpp"
-#include "caf/actor_cast.hpp"
 #include "caf/actor_system.hpp"
 #include "caf/caf_deprecated.hpp"
 #include "caf/detail/assert.hpp"
 #include "caf/detail/to_statically_typed_trait.hpp"
 #include "caf/detail/type_list.hpp"
 #include "caf/fwd.hpp"
+#include "caf/hash/fnv.hpp"
 #include "caf/intrusive_ptr.hpp"
 #include "caf/stateful_actor.hpp"
 #include "caf/type_id_list.hpp"
@@ -28,10 +28,7 @@ namespace caf {
 
 /// Identifies a statically typed actor.
 template <class... Ts>
-class typed_actor : detail::comparable<typed_actor<Ts...>>,
-                    detail::comparable<typed_actor<Ts...>, actor>,
-                    detail::comparable<typed_actor<Ts...>, actor_addr>,
-                    detail::comparable<typed_actor<Ts...>, strong_actor_ptr> {
+class typed_actor {
 public:
   // -- static assertions ------------------------------------------------------
 
@@ -166,7 +163,10 @@ public:
 
   /// Queries the address of the stored actor.
   actor_addr address() const noexcept {
-    return {ptr_.get(), add_ref};
+    if (ptr_) {
+      return {id(), node()};
+    }
+    return {};
   }
 
   /// Returns the ID of this actor.
@@ -203,20 +203,9 @@ public:
     return ptr_;
   }
 
-  intptr_t compare(const typed_actor& x) const noexcept {
-    return actor_addr::compare(get(), x.get());
-  }
-
-  intptr_t compare(const actor& x) const noexcept {
-    return actor_addr::compare(get(), actor_cast<actor_control_block*>(x));
-  }
-
-  intptr_t compare(const actor_addr& x) const noexcept {
-    return actor_addr::compare(get(), actor_cast<actor_control_block*>(x));
-  }
-
-  intptr_t compare(const strong_actor_ptr& x) const noexcept {
-    return actor_addr::compare(get(), actor_cast<actor_control_block*>(x));
+  /// Returns the stored strong actor pointer.
+  const strong_actor_ptr& as_intrusive_ptr() const noexcept {
+    return ptr_;
   }
 
   CAF_DEPRECATED("construct using add_ref or adopt_ref instead")
@@ -278,54 +267,36 @@ private:
   strong_actor_ptr ptr_;
 };
 
-/// @relates typed_actor
-template <class... Xs, class... Ys>
-bool operator==(const typed_actor<Xs...>& x,
-                const typed_actor<Ys...>& y) noexcept {
-  return actor_addr::compare(actor_cast<actor_control_block*>(x),
-                             actor_cast<actor_control_block*>(y))
-         == 0;
-}
-
-/// @relates typed_actor
-template <class... Xs, class... Ys>
-bool operator!=(const typed_actor<Xs...>& x,
-                const typed_actor<Ys...>& y) noexcept {
-  return !(x == y);
-}
-
-/// @relates typed_actor
-template <class... Xs>
-bool operator==(const typed_actor<Xs...>& x, std::nullptr_t) noexcept {
-  return actor_addr::compare(actor_cast<actor_control_block*>(x), nullptr) == 0;
-}
-
-/// @relates typed_actor
-template <class... Xs>
-bool operator==(std::nullptr_t, const typed_actor<Xs...>& x) noexcept {
-  return actor_addr::compare(actor_cast<actor_control_block*>(x), nullptr) == 0;
-}
-
-/// @relates typed_actor
-template <class... Xs>
-bool operator!=(const typed_actor<Xs...>& x, std::nullptr_t) noexcept {
-  return !(x == nullptr);
-}
-
-/// @relates typed_actor
-template <class... Xs>
-bool operator!=(std::nullptr_t, const typed_actor<Xs...>& x) noexcept {
-  return !(x == nullptr);
-}
+// Note: comparison for actor handles is implemented in actor.hpp.
 
 } // namespace caf
 
-// allow typed_actor to be used in hash maps
+namespace caf::detail {
+
+/// Customization point for enabling comparison between actor_addr and `Handle`.
+template <class... Sigs>
+struct with_actor_addr_from<typed_actor<Sigs...>> {
+  static constexpr bool specialized = true;
+
+  template <class Visitor>
+  static auto visit(const typed_actor<Sigs...>& hdl, Visitor&& visitor) {
+    auto addr = hdl.address();
+    return std::forward<Visitor>(visitor)(addr);
+  }
+};
+
+} // namespace caf::detail
+
 namespace std {
+
 template <class... Sigs>
 struct hash<caf::typed_actor<Sigs...>> {
   size_t operator()(const caf::typed_actor<Sigs...>& ref) const {
-    return ref ? static_cast<size_t>(ref->id()) : 0;
+    if (!ref) {
+      return 0;
+    }
+    return caf::hash::fnv<size_t>::compute(ref.id(), ref.node());
   }
 };
+
 } // namespace std

@@ -5,28 +5,16 @@
 #include "caf/actor.hpp"
 
 #include "caf/actor_addr.hpp"
-#include "caf/actor_proxy.hpp"
-#include "caf/deserializer.hpp"
-#include "caf/event_based_actor.hpp"
-#include "caf/local_actor.hpp"
-#include "caf/make_actor.hpp"
 #include "caf/scoped_actor.hpp"
-#include "caf/serializer.hpp"
-
-#include <cassert>
-#include <utility>
 
 namespace caf {
 
-actor::actor(std::nullptr_t) : ptr_(nullptr) {
+actor::actor(const scoped_actor& x) noexcept
+  : ptr_(actor_cast<strong_actor_ptr>(x)) {
   // nop
 }
 
-actor::actor(const scoped_actor& x) : ptr_(actor_cast<strong_actor_ptr>(x)) {
-  // nop
-}
-
-actor::actor(actor_control_block* ptr) : ptr_(ptr, add_ref) {
+actor::actor(actor_control_block* ptr) noexcept : ptr_(ptr, add_ref) {
   // nop
 }
 
@@ -36,14 +24,6 @@ actor::actor(actor_control_block* ptr, bool increase_ref_count)
   // nop
 }
 CAF_POP_WARNINGS
-
-actor::actor(actor_control_block* ptr, add_ref_t) : ptr_(ptr, add_ref) {
-  // nop
-}
-
-actor::actor(actor_control_block* ptr, adopt_ref_t) : ptr_(ptr, adopt_ref) {
-  // nop
-}
 
 actor& actor::operator=(std::nullptr_t) {
   ptr_.reset();
@@ -55,24 +35,15 @@ actor& actor::operator=(const scoped_actor& x) {
   return *this;
 }
 
-intptr_t actor::compare(const actor& x) const noexcept {
-  return actor_addr::compare(ptr_.get(), x.ptr_.get());
-}
-
-intptr_t actor::compare(const actor_addr& x) const noexcept {
-  return actor_addr::compare(ptr_.get(), actor_cast<actor_control_block*>(x));
-}
-
-intptr_t actor::compare(const strong_actor_ptr& x) const noexcept {
-  return actor_addr::compare(ptr_.get(), x.get());
-}
-
 void actor::swap(actor& other) noexcept {
   ptr_.swap(other.ptr_);
 }
 
 actor_addr actor::address() const noexcept {
-  return actor_cast<actor_addr>(ptr_);
+  if (ptr_) {
+    return {ptr_->id(), ptr_->node()};
+  }
+  return {};
 }
 
 bool operator==(const actor& lhs, abstract_actor* rhs) {
